@@ -24,6 +24,6 @@
 
 ## 5. Publish and deploy
 
-- [ ] 5.1 Create the initial Git history safely, publish the feature branch to GitHub, open a scoped PR, pass gates and squash-merge to `main`.
-- [ ] 5.2 Create/update the public Gitee mirror, configure the Coolify service and server-only DeepSeek/model variables, bind `budgetloop.versecraft.cn` and deploy.
-- [ ] 5.3 Poll deployment and service health, then verify the public homepage, same-origin health, folder upload and bounded AI draft generation before reporting completion.
+- [x] 5.1 Create the initial Git history safely, publish the feature branch to GitHub, open a scoped PR, pass gates and squash-merge to `main`.
+- [x] 5.2 Create/update the public Gitee mirror, configure the Coolify service and server-only DeepSeek/model variables, bind `budgetloop.versecraft.cn` and deploy.
+- [x] 5.3 Poll deployment and service health, then verify the public homepage, same-origin health, folder upload and bounded AI draft generation before reporting completion.
