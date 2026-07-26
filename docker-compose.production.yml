@@ -45,7 +45,7 @@ services:
       AI_RECOMMENDATION_ENABLED: "true"
       MANAGED_AI_RUNTIME_ENABLED: "true"
       MANAGED_AI_RUNTIME_BASE_URL: http://control-plane:8000/api/runtime/ai/v1
-      MANAGED_AI_RUNTIME_CONTAINER_BASE_URL: http://host.docker.internal:8000/api/runtime/ai/v1
+      MANAGED_AI_RUNTIME_CONTAINER_BASE_URL: http://host.docker.internal:${CONTROL_PLANE_HOST_PORT:-18080}/api/runtime/ai/v1
       ARTIFACT_BACKEND: local
       ARTIFACT_LOCAL_DIR: /data/artifacts
       AGENT_SERVER_IMAGE: ${AGENT_SERVER_IMAGE:-m.daocloud.io/ghcr.io/openhands/agent-server:latest-python}
@@ -54,7 +54,7 @@ services:
     volumes:
       - production-artifacts:/data/artifacts
     ports:
-      - "8000:8000"
+      - "${CONTROL_PLANE_HOST_PORT:-18080}:8000"
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
