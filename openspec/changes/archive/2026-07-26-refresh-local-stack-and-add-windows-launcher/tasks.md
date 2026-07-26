@@ -14,4 +14,4 @@
 
 - [x] 3.1 Add a Windows GitHub Actions workflow that runs launcher tests, builds an MSI, and uploads the artifact without publishing on failure.
 - [x] 3.2 Run source-level checks, strict OpenSpec validation, actual local browser interaction acceptance for autonomous mode and Max, and inspect runtime health/logs.
-- [ ] 3.3 Push the scoped change, wait for the Windows workflow, inspect its MSI artifact, and publish the GitHub release only after all gates pass.
+- [x] 3.3 Push the scoped change, wait for the Windows workflow, inspect its MSI artifact, and publish the GitHub release only after all gates pass.
