@@ -6,6 +6,17 @@ Define the shared visual, responsive, accessible, and trustworthy interaction fo
 
 ## Requirements
 
+### Requirement: Persistent BudgetLoop brand mark
+The web application SHALL render the BudgetLoop interlocking-loop mark in the persistent application shell and SHALL provide an equivalent branded web metadata icon. The mark SHALL have a meaningful accessible name where it is interactive and SHALL not add non-essential motion to the persistent navigation.
+
+#### Scenario: Operator opens a primary web route
+- **WHEN** the operator visits any route rendered inside the application shell
+- **THEN** the header displays the recognizable BudgetLoop interlocking-loop mark next to the product name without reducing navigation accessibility or responsive usability
+
+#### Scenario: Browser displays site metadata
+- **WHEN** a browser requests the BudgetLoop application icon
+- **THEN** it receives a vector or raster icon based on the same interlocking-loop brand geometry used by the product shell
+
 ### Requirement: Shared visual system
 The frontend SHALL use shared tokens and reusable primitives for typography, spacing, color, surfaces, controls, status, feedback, and motion across all primary routes. Each recurring pattern (tables, tab bars, progress bars, status badges, banners) SHALL have exactly one canonical implementation that routes reuse, color values SHALL come from the design-token palette rather than ad-hoc hex or raw palette utilities, and the committed design-system document SHALL describe the theme the application actually ships.
 

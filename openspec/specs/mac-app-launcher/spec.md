@@ -3,6 +3,13 @@
 ## Purpose
 TBD - created by archiving change mac-launcher-folder-access. Update Purpose after archive.
 ## Requirements
+### Requirement: Versioned, branded macOS release archive
+The macOS launcher build SHALL embed the release version and BudgetLoop application icon in `BudgetLoop.app`, and its release archive SHALL be traceable to the corresponding GitHub tag.
+
+#### Scenario: Operator inspects the macOS application
+- **WHEN** an operator opens a macOS release archive or inspects `BudgetLoop.app`
+- **THEN** macOS displays the BudgetLoop icon and the bundle reports the GitHub Release version
+
 ### Requirement: Double-clickable application bundle
 The project SHALL provide a macOS application bundle (`BudgetLoop.app`) built from the `desktop/` launcher project with the system Swift toolchain, requiring no Xcode project and no third-party packaging dependency. Launching the app SHALL bring the operator to the BudgetLoop web UI in a native application window when the local stack is or becomes healthy.
 
