@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Env & secrets
+.env
+*.local
+
+# Runtime data
+artifacts/
+workspace-data/
+*.log
+
+# Generated application bundles
+BudgetLoop.app/
+desktop/build/
+
+# OS
+.DS_Store
+
+# Test
+htmlcov/
+.coverage
+
+# Reproducible shallow upstream engine checkouts (see pinned manifest + fetch script)
+vendor/agent-engines/openhands/
+vendor/agent-engines/codex/
+vendor/agent-engines/gemini-cli/
+vendor/agent-engines/opencode/
+
+# Reproducible shallow AI gateway checkout (see pinned manifest + fetch script)
+vendor/ai-gateways/new-api/

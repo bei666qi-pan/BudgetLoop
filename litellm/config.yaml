@@ -1,0 +1,33 @@
+# BudgetLoop LiteLLM Proxy 配置
+#
+# 注意：os.environ/VAR 语法在变量未设置或为空字符串时会导致 proxy 启动报错。
+# 以下变量必须设置（见 .env.example）：
+#   LLM_MODEL       必须显式设置（.env.example 默认 openai/gpt-4o-mini），
+#                   且必须注入 litellm 容器环境。
+#   LLM_BASE_URL    OpenAI-compatible 供应商地址
+#   LLM_API_KEY     真实供应商 Key
+#   LITELLM_MASTER_KEY / DATABASE_URL（LiteLLM 自身的库，非业务库）
+model_list:
+  - model_name: budgetloop-default
+    litellm_params:
+      model: os.environ/LLM_MODEL
+      api_base: os.environ/LLM_BASE_URL
+      api_key: os.environ/LLM_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+
+litellm_settings:
+  # 自定义预算回调：格式为 <python文件名>.<实例名>。
+  # 依据官方文档 https://docs.litellm.ai/docs/proxy/logging 的
+  # "Custom Callback Class [Async]" 一节：callbacks 设为
+  # python_filename.logger_instance_name 时，LiteLLM 从 config.yaml
+  # 同目录加载该模块并取其模块级实例，挂到 litellm.callbacks。
+  # 因此 budget_callback.py 必须与 config.yaml 一起 COPY 进 /app。
+  callbacks: budget_callback.proxy_handler_instance
+  # 暂不启用任何外部观测后端（success_callback / failure_callback 留空）。
+  # SDK/condenser 内部失败时由网关侧重试，重试中的每次真实 HTTP 调用
+  # 都会经过 budget_callback 的 pre-call 预留。
+  num_retries: 2
+  request_timeout: 120

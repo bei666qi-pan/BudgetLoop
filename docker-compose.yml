@@ -1,0 +1,230 @@
+name: budgetloop
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-postgres.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "5432:5432"
+
+  valkey:
+    image: valkey/valkey:7-alpine
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "6379:6379"
+
+  litellm:
+    profiles: ["legacy-litellm"]
+    build: ./litellm
+    environment:
+      DATABASE_URL: ${LITELLM_DATABASE_URL}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      # 业务库连接（自定义预算回调直接读写业务账本）
+      BUDGETLOOP_DATABASE_URL: ${DATABASE_URL}
+      STORE_MODEL_IN_DB: "True"
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  new-api:
+    image: calciumion/new-api:v1.0.0-rc.21
+    command: --log-dir /data/logs
+    environment:
+      SQL_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/newapi
+      REDIS_CONN_STRING: redis://valkey:6379/1
+      SESSION_SECRET: ${NEW_API_SESSION_SECRET}
+      TZ: ${TZ:-Asia/Shanghai}
+      ERROR_LOG_ENABLED: "true"
+      BATCH_UPDATE_ENABLED: "true"
+      NODE_NAME: budgetloop-new-api
+    volumes:
+      - newapi-data:/data
+    ports:
+      - "${NEW_API_PORT:-3001}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -q '\"success\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  control-plane:
+    build:
+      context: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/budgetloop
+      REDIS_URL: redis://valkey:6379/0
+      API_TOKEN: ${API_TOKEN}
+      AI_GATEWAY_TYPE: ${AI_GATEWAY_TYPE:-new-api}
+      AI_GATEWAY_BASE_URL: ${AI_GATEWAY_BASE_URL:-http://new-api:3000}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY}
+      AI_GATEWAY_CONSOLE_URL: ${AI_GATEWAY_CONSOLE_URL:-http://localhost:3001}
+      AI_GATEWAY_RECOMMENDATION_MODEL: ${AI_GATEWAY_RECOMMENDATION_MODEL:-budgetloop-recommendation}
+      AI_GATEWAY_DEFAULT_MODEL: ${AI_GATEWAY_DEFAULT_MODEL:-}
+      AI_GATEWAY_DEPLOYMENT_LABEL: ${AI_GATEWAY_DEPLOYMENT_LABEL:-}
+      AI_GATEWAY_NETWORK_LABEL: ${AI_GATEWAY_NETWORK_LABEL:-}
+      AI_GATEWAY_REASONING_EFFORT: ${AI_GATEWAY_REASONING_EFFORT:-}
+      AI_GATEWAY_THINKING_ENABLED: ${AI_GATEWAY_THINKING_ENABLED:-false}
+      AI_GATEWAY_THINKING_BUDGET_TOKENS: ${AI_GATEWAY_THINKING_BUDGET_TOKENS:-0}
+      MANAGED_AI_RUNTIME_ENABLED: ${MANAGED_AI_RUNTIME_ENABLED:-true}
+      MANAGED_AI_RUNTIME_BASE_URL: ${MANAGED_AI_RUNTIME_BASE_URL:-http://control-plane:8000/api/runtime/ai/v1}
+      MANAGED_AI_RUNTIME_CONTAINER_BASE_URL: ${MANAGED_AI_RUNTIME_CONTAINER_BASE_URL:-http://host.docker.internal:8000/api/runtime/ai/v1}
+      AI_RECOMMENDATION_ENABLED: ${AI_RECOMMENDATION_ENABLED:-true}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      ARTIFACT_BACKEND: ${ARTIFACT_BACKEND:-local}
+      ARTIFACT_LOCAL_DIR: /data/artifacts
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-budgetloop-artifacts}
+      ENABLE_CLI_ENGINES: ${ENABLE_CLI_ENGINES:-true}
+      BUDGETLOOP_GEMINI_CLI_SANDBOX_READY: ${BUDGETLOOP_GEMINI_CLI_SANDBOX_READY:-true}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,*.local},new-api,postgres,valkey,control-plane,worker
+      no_proxy: ${no_proxy:-localhost,127.0.0.1,::1,host.docker.internal,*.local},new-api,postgres,valkey,control-plane,worker
+    volumes:
+      - artifacts:/data/artifacts
+    ports:
+      - "${CONTROL_PLANE_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      new-api:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+    command: dramatiq app.worker.actors -p 1 -t 4
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/budgetloop
+      REDIS_URL: redis://valkey:6379/0
+      API_TOKEN: ${API_TOKEN}
+      AI_GATEWAY_TYPE: ${AI_GATEWAY_TYPE:-new-api}
+      AI_GATEWAY_BASE_URL: ${AI_GATEWAY_BASE_URL:-http://new-api:3000}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY}
+      AI_GATEWAY_RECOMMENDATION_MODEL: ${AI_GATEWAY_RECOMMENDATION_MODEL:-budgetloop-recommendation}
+      AI_GATEWAY_DEFAULT_MODEL: ${AI_GATEWAY_DEFAULT_MODEL:-}
+      AI_GATEWAY_DEPLOYMENT_LABEL: ${AI_GATEWAY_DEPLOYMENT_LABEL:-}
+      AI_GATEWAY_NETWORK_LABEL: ${AI_GATEWAY_NETWORK_LABEL:-}
+      AI_GATEWAY_REASONING_EFFORT: ${AI_GATEWAY_REASONING_EFFORT:-}
+      AI_GATEWAY_THINKING_ENABLED: ${AI_GATEWAY_THINKING_ENABLED:-false}
+      AI_GATEWAY_THINKING_BUDGET_TOKENS: ${AI_GATEWAY_THINKING_BUDGET_TOKENS:-0}
+      MANAGED_AI_RUNTIME_ENABLED: ${MANAGED_AI_RUNTIME_ENABLED:-true}
+      MANAGED_AI_RUNTIME_BASE_URL: ${MANAGED_AI_RUNTIME_BASE_URL:-http://control-plane:8000/api/runtime/ai/v1}
+      MANAGED_AI_RUNTIME_CONTAINER_BASE_URL: ${MANAGED_AI_RUNTIME_CONTAINER_BASE_URL:-http://host.docker.internal:8000/api/runtime/ai/v1}
+      AI_RECOMMENDATION_ENABLED: ${AI_RECOMMENDATION_ENABLED:-true}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      AGENT_SERVER_IMAGE: ${AGENT_SERVER_IMAGE}
+      WORKSPACE_PUBLISHED_HOST: ${WORKSPACE_PUBLISHED_HOST:-host.docker.internal}
+      ENABLE_CLI_ENGINES: ${ENABLE_CLI_ENGINES:-true}
+      BUDGETLOOP_GEMINI_CLI_SANDBOX_READY: ${BUDGETLOOP_GEMINI_CLI_SANDBOX_READY:-true}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,*.local},new-api,postgres,valkey,control-plane,worker
+      no_proxy: ${no_proxy:-localhost,127.0.0.1,::1,host.docker.internal,*.local},new-api,postgres,valkey,control-plane,worker
+      ARTIFACT_BACKEND: ${ARTIFACT_BACKEND:-local}
+      ARTIFACT_LOCAL_DIR: /data/artifacts
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-budgetloop-artifacts}
+    volumes:
+      # worker 需要拉起每 run 独立的 Workspace 容器（sibling 容器）
+      - /var/run/docker.sock:/var/run/docker.sock
+      - artifacts:/data/artifacts
+      - ./demo:/demo:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      new-api:
+        condition: service_healthy
+
+  order-service:
+    build: ./demo/order-service
+    environment:
+      FIXTURE_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/fixture
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # 仅供 demo/fixture 测试使用；workspace 容器通过宿主机网络访问
+
+  web:
+    build:
+      context: ./web
+    environment:
+      CONTROL_PLANE_API_BASE: http://control-plane:8000
+      CONTROL_PLANE_API_TOKEN: ${API_TOKEN}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - control-plane
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - miniodata:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      mc mb -p local/$${MINIO_BUCKET} || true;
+      exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-budgetloop-artifacts}
+
+  # ===== 可选观测栈：docker compose --profile observability up =====
+  otel-collector:
+    profiles: ["observability"]
+    image: otel/opentelemetry-collector:latest
+    ports:
+      - "4318:4318"
+
+volumes:
+  pgdata:
+  newapi-data:
+  artifacts:
+  miniodata:

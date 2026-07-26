@@ -1,0 +1,64 @@
+schema_version: 1
+default_engine: openhands
+reviewed_at: '2026-07-25'
+engines:
+  - id: openhands
+    name: OpenHands
+    repository: OpenHands/OpenHands
+    url: https://github.com/OpenHands/OpenHands
+    revision: 652503005093d18d1b2f48816c91d62e93f45970
+    reviewed_stars: 82021
+    license: MIT core
+    license_scope: Core source only; enterprise/ is excluded because it has separate terms.
+    source_path: vendor/agent-engines/openhands
+    transport: server
+    command: null
+    required_env: []
+    credential_hint: Uses the configured OpenHands agent-server and LiteLLM credentials.
+    capabilities: [conversation, streaming_events, tools, workspace, resume]
+  - id: codex
+    name: Codex
+    repository: openai/codex
+    url: https://github.com/openai/codex
+    revision: 4c43465133428898aa84f0bfc02c306ed65fb66a
+    reviewed_stars: 101301
+    license: Apache-2.0
+    license_scope: Entire repository under the declared license.
+    source_path: vendor/agent-engines/codex
+    transport: cli
+    command: codex
+    distribution_package: '@openai/codex'
+    distribution_version: '0.145.0'
+    required_env: []
+    credential_hint: Uses Codex login or an engine-scoped API provider configured in the worker runtime.
+    capabilities: [non_interactive, json_events, tools, workspace, resume]
+  - id: gemini-cli
+    name: Gemini CLI
+    repository: google-gemini/gemini-cli
+    url: https://github.com/google-gemini/gemini-cli
+    revision: 3818efbbfbf8ef029ef53a6ab1093db39971ce83
+    reviewed_stars: 106162
+    license: Apache-2.0
+    license_scope: Entire repository under the declared license.
+    source_path: vendor/agent-engines/gemini-cli
+    transport: cli
+    command: gemini
+    distribution_package: '@google/gemini-cli'
+    distribution_version: '0.52.0'
+    required_env: []
+    credential_hint: Uses Gemini login or GEMINI_API_KEY in the worker runtime.
+    capabilities: [non_interactive, json_events, tools, workspace, resume]
+  - id: opencode
+    name: OpenCode
+    repository: anomalyco/opencode
+    url: https://github.com/anomalyco/opencode
+    revision: 7534d23551f665e65080809975b4ca5c7d63807b
+    reviewed_stars: 189513
+    license: MIT
+    license_scope: Entire repository under the declared license.
+    source_path: vendor/agent-engines/opencode
+    transport: cli
+    command: opencode
+    required_env: []
+    credential_hint: Uses an OpenCode provider login or provider-specific environment variables.
+    capabilities: [non_interactive, json_events, tools, workspace, resume]
