@@ -1,0 +1,24 @@
+reviewed_at: "2026-07-25"
+gateways:
+  - id: new-api
+    name: New API
+    repository: QuantumNous/new-api
+    repository_url: https://github.com/QuantumNous/new-api
+    release: v1.0.0-rc.21
+    revision: bde9b2f44887d34ec54799ae191d50f97914359e
+    reviewed_stars: 43370
+    license: AGPL-3.0
+    deployment_boundary: Separate HTTP service; no source linking into BudgetLoop.
+    protocols:
+      - OpenAI Chat Completions
+      - OpenAI Responses
+      - Claude Messages
+      - Gemini native
+      - custom authorized upstreams
+    routing:
+      - model mapping
+      - channel priority
+      - weighted selection
+      - automatic retry
+      - rate limiting
+    source_role: direct-runtime

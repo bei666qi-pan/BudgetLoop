@@ -1,0 +1,22 @@
+schema: spec-driven
+
+context: |
+  Product: BudgetLoop is a budget-aware, self-healing coding agent. It controls
+  token, time, call-count, and cost budgets while executing software tasks.
+  Architecture: Next.js 15 + TypeScript + Tailwind frontend; FastAPI/Python 3.12
+  control plane and Dramatiq workers; PostgreSQL 16 as the sole business source
+  of truth; Valkey, LiteLLM, OpenHands agent-server, Docker workspaces, and MinIO.
+  Conventions: Make minimal, focused changes; preserve security boundaries and
+  avoid exposing provider keys to the frontend. Use Python typing and Ruff
+  formatting conventions. Keep API contracts documented when changing endpoints.
+  Verification: backend uses pytest; frontend uses Vitest and `npm run build`.
+
+rules:
+  proposal:
+    - State budget, safety, API-contract, and migration impact when relevant.
+    - Include explicit non-goals for cross-service or infrastructure changes.
+  design:
+    - Keep PostgreSQL as the only business source of truth.
+    - Describe failure handling and observability for worker or LLM changes.
+  tasks:
+    - Include focused automated verification for every behavior change.

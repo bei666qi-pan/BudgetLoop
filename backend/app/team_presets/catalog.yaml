@@ -1,0 +1,1535 @@
+schema_version: 1
+sources:
+  metagpt:
+    repository: FoundationAgents/MetaGPT
+    url: https://github.com/FoundationAgents/MetaGPT
+    license: MIT
+    reviewed_stars: 69503
+    reviewed_at: '2026-07-25'
+    integration: pattern
+  autogen:
+    repository: microsoft/autogen
+    url: https://github.com/microsoft/autogen
+    license: CC-BY-4.0
+    reviewed_stars: 59956
+    reviewed_at: '2026-07-25'
+    integration: pattern
+  crewai:
+    repository: crewAIInc/crewAI
+    url: https://github.com/crewAIInc/crewAI
+    license: MIT
+    reviewed_stars: 56103
+    reviewed_at: '2026-07-25'
+    integration: pattern
+  langgraph:
+    repository: langchain-ai/langgraph
+    url: https://github.com/langchain-ai/langgraph
+    license: MIT
+    reviewed_stars: 38095
+    reviewed_at: '2026-07-25'
+    integration: runtime
+  semantic_kernel:
+    repository: microsoft/semantic-kernel
+    url: https://github.com/microsoft/semantic-kernel
+    license: MIT
+    reviewed_stars: 28362
+    reviewed_at: '2026-07-25'
+    integration: pattern
+  camel:
+    repository: camel-ai/camel
+    url: https://github.com/camel-ai/camel
+    license: Apache-2.0
+    reviewed_stars: 17488
+    reviewed_at: '2026-07-25'
+    integration: pattern
+presets:
+- id: general-project
+  version: 1
+  name: 通用项目团队
+  category: general
+  summary: 从目标澄清、执行到验证的稳健通用团队。
+  best_for: 目标跨领域或暂时不确定的项目
+  coordination_pattern: 主管协调 + 专家执行 + 独立验收 + 显式 Handoff
+  default_workspace_policy: isolated
+  industries:
+  - 通用
+  - 其他
+  pace_tags:
+  - steady
+  - fast
+  risk_tags:
+  - steady
+  - balanced
+  sources:
+  - autogen
+  - crewai
+  - langgraph
+  signals: []
+  agents:
+    lead:
+      role: 项目统筹
+      goal: 维护项目计划并推动阶段交付
+      backstory: 澄清目标、拆分阶段并协调风险
+      skills:
+      - 目标澄清
+      - 任务拆解
+      - 风险协调
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    specialist:
+      role: 领域执行
+      goal: 围绕项目目标完成主要执行工作
+      backstory: 完成核心产出并记录依据
+      skills:
+      - 专业执行
+      - 证据记录
+      - 增量交付
+      optional: false
+      budget:
+        max_total_tokens: 35000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    reviewer:
+      role: 质量评审
+      goal: 发现缺口并给出可操作的修正建议
+      backstory: 独立检查产出与验收标准
+      skills:
+      - 质量审查
+      - 验收核对
+      - 风险识别
+      optional: false
+      budget:
+        max_total_tokens: 16000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    research:
+      role: 信息研究
+      goal: 为团队提供可追溯的研究结论
+      backstory: 补齐事实、竞品与约束
+      skills:
+      - 资料检索
+      - 事实核验
+      - 结论摘要
+      optional: true
+      budget:
+        max_total_tokens: 16000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    lead_task:
+      description: 澄清目标、拆分阶段并协调风险
+      expected_output: 维护项目计划并推动阶段交付
+      agent: lead
+    specialist_task:
+      description: 完成核心产出并记录依据
+      expected_output: 围绕项目目标完成主要执行工作
+      agent: specialist
+    reviewer_task:
+      description: 独立检查产出与验收标准
+      expected_output: 发现缺口并给出可操作的修正建议
+      agent: reviewer
+    research_task:
+      description: 补齐事实、竞品与约束
+      expected_output: 为团队提供可追溯的研究结论
+      agent: research
+  sop:
+    entry: planning
+    stages:
+    - id: planning
+      agents:
+      - lead
+      requires_handoff: []
+      review_gate: false
+    - id: research
+      agents:
+      - research
+      requires_handoff:
+      - planning
+      review_gate: false
+    - id: execution
+      agents:
+      - specialist
+      requires_handoff:
+      - planning
+      review_gate: false
+    - id: review
+      agents:
+      - reviewer
+      requires_handoff:
+      - execution
+      review_gate: true
+- id: software-delivery
+  version: 1
+  name: 软件交付团队
+  category: software
+  summary: 覆盖需求、架构、实现与验证的完整软件交付链路。
+  best_for: 功能研发、系统重构、API 与工程交付
+  coordination_pattern: 产品定义 → 架构分解 → 并行实现 → 独立测试
+  default_workspace_policy: worktree
+  industries:
+  - 软件
+  - 互联网
+  - 开发
+  pace_tags:
+  - steady
+  - fast
+  risk_tags:
+  - steady
+  - balanced
+  sources:
+  - metagpt
+  - langgraph
+  signals:
+  - label: 软件研发
+    keywords:
+    - 软件
+    - 系统
+    - 平台
+    - 应用
+    - app
+    - website
+    - 网站
+    weight: 4
+  - label: 工程实现
+    keywords:
+    - 开发
+    - 代码
+    - 接口
+    - api
+    - 重构
+    - 测试
+    - bug
+    weight: 4
+  agents:
+    product:
+      role: 产品负责人
+      goal: 将项目目标转为可执行需求与验收清单
+      backstory: 明确范围、用户路径与验收标准
+      skills:
+      - 需求分析
+      - 范围控制
+      - 验收设计
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    architect:
+      role: 架构设计
+      goal: 输出可实施架构并向实现角色 Handoff
+      backstory: 设计边界、接口与关键技术决策
+      skills:
+      - 系统设计
+      - 接口契约
+      - 技术决策
+      optional: false
+      budget:
+        max_total_tokens: 24000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    backend:
+      role: 后端实现
+      goal: 完成后端功能并提供可验证证据
+      backstory: 实现服务、数据与接口
+      skills:
+      - 服务开发
+      - 数据建模
+      - 可观测性
+      optional: false
+      budget:
+        max_total_tokens: 40000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    frontend:
+      role: 前端体验
+      goal: 完成可用且响应式的前端交付
+      backstory: 实现界面、交互与可访问性
+      skills:
+      - 交互实现
+      - 响应式
+      - 可访问性
+      optional: false
+      budget:
+        max_total_tokens: 35000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    qa:
+      role: 测试验证
+      goal: 运行验收并输出缺陷与发布建议
+      backstory: 独立验证功能、回归与风险
+      skills:
+      - 测试设计
+      - 回归验证
+      - 发布门禁
+      optional: false
+      budget:
+        max_total_tokens: 22000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    product_task:
+      description: 明确范围、用户路径与验收标准
+      expected_output: 将项目目标转为可执行需求与验收清单
+      agent: product
+    architect_task:
+      description: 设计边界、接口与关键技术决策
+      expected_output: 输出可实施架构并向实现角色 Handoff
+      agent: architect
+    backend_task:
+      description: 实现服务、数据与接口
+      expected_output: 完成后端功能并提供可验证证据
+      agent: backend
+    frontend_task:
+      description: 实现界面、交互与可访问性
+      expected_output: 完成可用且响应式的前端交付
+      agent: frontend
+    qa_task:
+      description: 独立验证功能、回归与风险
+      expected_output: 运行验收并输出缺陷与发布建议
+      agent: qa
+  sop:
+    entry: discovery
+    stages:
+    - id: discovery
+      agents:
+      - product
+      requires_handoff: []
+      review_gate: false
+    - id: architecture
+      agents:
+      - architect
+      requires_handoff:
+      - discovery
+      review_gate: true
+    - id: implementation
+      agents:
+      - backend
+      - frontend
+      requires_handoff:
+      - architecture
+      review_gate: false
+    - id: review
+      agents:
+      - qa
+      requires_handoff:
+      - implementation
+      review_gate: true
+- id: game-development
+  version: 1
+  name: 游戏研发团队
+  category: game
+  summary: 从核心玩法到可试玩版本的跨职能游戏研发团队。
+  best_for: 独立游戏、移动游戏、原型与版本迭代
+  coordination_pattern: 制作人主管协调 + 阶段评审 + 显式 Handoff
+  default_workspace_policy: worktree
+  industries:
+  - 游戏
+  - 娱乐
+  pace_tags:
+  - fast
+  - steady
+  risk_tags:
+  - balanced
+  - creative
+  sources:
+  - metagpt
+  - crewai
+  - langgraph
+  signals:
+  - label: 游戏
+    keywords:
+    - 游戏
+    - game
+    - 玩法
+    - 关卡
+    - 解谜
+    - 手游
+    weight: 6
+  - label: 可试玩版本
+    keywords:
+    - 试玩
+    - 原型
+    - demo
+    - 版本
+    - 上线
+    weight: 3
+  - label: 移动端
+    keywords:
+    - 手机
+    - 移动端
+    - ios
+    - android
+    weight: 2
+  agents:
+    producer:
+      role: 制作人与项目统筹
+      goal: 推动游戏从概念到可试玩版本
+      backstory: 把控范围、进度、资源与风险
+      skills:
+      - 制作管理
+      - 范围控制
+      - 版本规划
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    designer:
+      role: 游戏策划
+      goal: 输出可实现且可测试的玩法方案
+      backstory: 设计核心玩法、关卡与数值节奏
+      skills:
+      - 玩法设计
+      - 关卡设计
+      - 数值平衡
+      optional: false
+      budget:
+        max_total_tokens: 22000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    client:
+      role: 客户端开发
+      goal: 交付稳定可运行的游戏客户端
+      backstory: 实现玩法系统、输入与性能
+      skills:
+      - 客户端开发
+      - 性能优化
+      - 工具集成
+      optional: false
+      budget:
+        max_total_tokens: 38000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    visual:
+      role: 视觉与交互
+      goal: 提供一致且清晰的视觉交互规范
+      backstory: 定义美术风格、界面与反馈
+      skills:
+      - 美术方向
+      - 游戏 UI
+      - 动效反馈
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    qa:
+      role: 测试与平衡
+      goal: 输出问题清单和玩法平衡建议
+      backstory: 验证稳定性、体验与难度曲线
+      skills:
+      - 玩法测试
+      - 兼容验证
+      - 平衡分析
+      optional: false
+      budget:
+        max_total_tokens: 16000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    producer_task:
+      description: 把控范围、进度、资源与风险
+      expected_output: 推动游戏从概念到可试玩版本
+      agent: producer
+    designer_task:
+      description: 设计核心玩法、关卡与数值节奏
+      expected_output: 输出可实现且可测试的玩法方案
+      agent: designer
+    client_task:
+      description: 实现玩法系统、输入与性能
+      expected_output: 交付稳定可运行的游戏客户端
+      agent: client
+    visual_task:
+      description: 定义美术风格、界面与反馈
+      expected_output: 提供一致且清晰的视觉交互规范
+      agent: visual
+    qa_task:
+      description: 验证稳定性、体验与难度曲线
+      expected_output: 输出问题清单和玩法平衡建议
+      agent: qa
+  sop:
+    entry: planning
+    stages:
+    - id: planning
+      agents:
+      - producer
+      requires_handoff: []
+      review_gate: false
+    - id: design
+      agents:
+      - designer
+      - visual
+      requires_handoff:
+      - planning
+      review_gate: true
+    - id: implementation
+      agents:
+      - client
+      requires_handoff:
+      - design
+      review_gate: false
+    - id: review
+      agents:
+      - qa
+      requires_handoff:
+      - implementation
+      review_gate: true
+- id: business-growth
+  version: 1
+  name: 商业增长团队
+  category: business
+  summary: 以数据、渠道和实验推动可验证增长。
+  best_for: 获客、转化、销售策略与增长实验
+  coordination_pattern: 增长负责人路由 + 专家并行 + 数据复盘
+  default_workspace_policy: isolated
+  industries:
+  - 商业
+  - 电商
+  - 营销
+  - 销售
+  pace_tags:
+  - fast
+  - steady
+  risk_tags:
+  - balanced
+  - creative
+  sources:
+  - crewai
+  - camel
+  - autogen
+  signals:
+  - label: 商业增长
+    keywords:
+    - 增长
+    - 商业
+    - 营收
+    - 销售
+    - 获客
+    - 转化
+    - gmv
+    weight: 6
+  - label: 市场营销
+    keywords:
+    - 营销
+    - 投放
+    - 渠道
+    - 活动
+    - 增长实验
+    weight: 4
+  agents:
+    lead:
+      role: 增长负责人
+      goal: 形成可测量的增长路线图
+      backstory: 定义增长目标并管理实验组合
+      skills:
+      - 增长策略
+      - 实验管理
+      - 指标设计
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    market:
+      role: 市场策略
+      goal: 找到优先市场与差异化机会
+      backstory: 分析市场、细分与竞争定位
+      skills:
+      - 市场分析
+      - 定位策略
+      - 竞品研究
+      optional: false
+      budget:
+        max_total_tokens: 22000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    channel:
+      role: 渠道运营
+      goal: 输出可执行的获客与运营计划
+      backstory: 设计渠道组合和执行节奏
+      skills:
+      - 渠道策略
+      - 活动运营
+      - 转化优化
+      optional: false
+      budget:
+        max_total_tokens: 24000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    sales:
+      role: 销售转化
+      goal: 提升从意向到成交的可观测转化
+      backstory: 优化线索、话术与成交路径
+      skills:
+      - 销售流程
+      - 价值表达
+      - 异议处理
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    analyst:
+      role: 增长分析
+      goal: 用数据评估实验并提出下一步
+      backstory: 建立指标、归因与复盘
+      skills:
+      - 指标体系
+      - 归因分析
+      - 实验复盘
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    lead_task:
+      description: 定义增长目标并管理实验组合
+      expected_output: 形成可测量的增长路线图
+      agent: lead
+    market_task:
+      description: 分析市场、细分与竞争定位
+      expected_output: 找到优先市场与差异化机会
+      agent: market
+    channel_task:
+      description: 设计渠道组合和执行节奏
+      expected_output: 输出可执行的获客与运营计划
+      agent: channel
+    sales_task:
+      description: 优化线索、话术与成交路径
+      expected_output: 提升从意向到成交的可观测转化
+      agent: sales
+    analyst_task:
+      description: 建立指标、归因与复盘
+      expected_output: 用数据评估实验并提出下一步
+      agent: analyst
+  sop:
+    entry: strategy
+    stages:
+    - id: strategy
+      agents:
+      - lead
+      requires_handoff: []
+      review_gate: false
+    - id: research
+      agents:
+      - market
+      requires_handoff:
+      - strategy
+      review_gate: false
+    - id: execution
+      agents:
+      - channel
+      - sales
+      requires_handoff:
+      - research
+      review_gate: false
+    - id: review
+      agents:
+      - analyst
+      requires_handoff:
+      - execution
+      review_gate: true
+- id: product-launch
+  version: 1
+  name: 产品发布团队
+  category: business
+  summary: 协调产品、市场、内容与发布门禁的上线团队。
+  best_for: 新品发布、版本上线与市场进入
+  coordination_pattern: 发布主管 + 并行准备 + 上线门禁 + 复盘
+  default_workspace_policy: isolated
+  industries:
+  - 产品
+  - 商业
+  - 互联网
+  pace_tags:
+  - fast
+  - steady
+  risk_tags:
+  - steady
+  - balanced
+  sources:
+  - crewai
+  - langgraph
+  - autogen
+  signals:
+  - label: 产品发布
+    keywords:
+    - 发布
+    - 上线
+    - 新品
+    - launch
+    - 版本
+    weight: 6
+  - label: 市场进入
+    keywords:
+    - 上市
+    - go-to-market
+    - gtm
+    - 市场进入
+    weight: 4
+  agents:
+    launch:
+      role: 发布负责人
+      goal: 保证各发布轨道按门禁汇合
+      backstory: 维护范围、依赖、节奏与决策
+      skills:
+      - 发布管理
+      - 依赖协调
+      - 风险决策
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    product:
+      role: 产品准备
+      goal: 输出发布范围和产品就绪清单
+      backstory: 梳理价值、功能与用户路径
+      skills:
+      - 产品定位
+      - 功能梳理
+      - 就绪评估
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    marketing:
+      role: 上市营销
+      goal: 形成可执行上市计划
+      backstory: 规划受众、渠道与发布活动
+      skills:
+      - 上市策略
+      - 渠道规划
+      - 活动设计
+      optional: false
+      budget:
+        max_total_tokens: 22000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    content:
+      role: 发布内容
+      goal: 交付一致的发布内容包
+      backstory: 生产发布说明、素材与销售支持
+      skills:
+      - 内容策划
+      - 信息架构
+      - 销售赋能
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    review:
+      role: 发布验收
+      goal: 给出可上线或阻断建议
+      backstory: 核对风险、支持与回滚准备
+      skills:
+      - 门禁检查
+      - 风险审查
+      - 回滚准备
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    launch_task:
+      description: 维护范围、依赖、节奏与决策
+      expected_output: 保证各发布轨道按门禁汇合
+      agent: launch
+    product_task:
+      description: 梳理价值、功能与用户路径
+      expected_output: 输出发布范围和产品就绪清单
+      agent: product
+    marketing_task:
+      description: 规划受众、渠道与发布活动
+      expected_output: 形成可执行上市计划
+      agent: marketing
+    content_task:
+      description: 生产发布说明、素材与销售支持
+      expected_output: 交付一致的发布内容包
+      agent: content
+    review_task:
+      description: 核对风险、支持与回滚准备
+      expected_output: 给出可上线或阻断建议
+      agent: review
+  sop:
+    entry: planning
+    stages:
+    - id: planning
+      agents:
+      - launch
+      requires_handoff: []
+      review_gate: false
+    - id: readiness
+      agents:
+      - product
+      requires_handoff:
+      - planning
+      review_gate: true
+    - id: go-to-market
+      agents:
+      - marketing
+      - content
+      requires_handoff:
+      - readiness
+      review_gate: false
+    - id: review
+      agents:
+      - review
+      requires_handoff:
+      - go-to-market
+      review_gate: true
+- id: brand-content
+  version: 1
+  name: 品牌内容团队
+  category: content
+  summary: 从品牌策略到多渠道内容交付的创作团队。
+  best_for: 品牌叙事、内容营销与社交媒体运营
+  coordination_pattern: 策略定调 → 创作执行 → 编辑审校 → 渠道适配
+  default_workspace_policy: isolated
+  industries:
+  - 内容
+  - 品牌
+  - 媒体
+  pace_tags:
+  - fast
+  - steady
+  risk_tags:
+  - creative
+  - balanced
+  sources:
+  - crewai
+  - camel
+  signals:
+  - label: 品牌内容
+    keywords:
+    - 品牌
+    - 内容
+    - 文案
+    - 脚本
+    - 创作
+    - 自媒体
+    weight: 6
+  - label: 社交媒体
+    keywords:
+    - 社媒
+    - 小红书
+    - 公众号
+    - 视频
+    - 短视频
+    weight: 4
+  agents:
+    strategy:
+      role: 品牌策略
+      goal: 形成清晰可复用的品牌内容方向
+      backstory: 定义受众、调性与核心信息
+      skills:
+      - 品牌定位
+      - 受众洞察
+      - 信息策略
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    planner:
+      role: 内容策划
+      goal: 输出可执行的内容日历
+      backstory: 规划主题、栏目与发布节奏
+      skills:
+      - 选题规划
+      - 内容日历
+      - 渠道编排
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    creator:
+      role: 内容创作
+      goal: 交付符合品牌调性的内容初稿
+      backstory: 产出文案、脚本与创意方案
+      skills:
+      - 文案写作
+      - 脚本创作
+      - 创意发散
+      optional: false
+      budget:
+        max_total_tokens: 26000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    editor:
+      role: 编辑审校
+      goal: 形成可发布终稿并记录修改依据
+      backstory: 统一质量、事实与表达
+      skills:
+      - 内容编辑
+      - 事实核验
+      - 质量审校
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    channel:
+      role: 渠道运营
+      goal: 提升内容分发与反馈闭环
+      backstory: 适配渠道并规划互动
+      skills:
+      - 渠道适配
+      - 社媒运营
+      - 效果复盘
+      optional: true
+      budget:
+        max_total_tokens: 16000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    strategy_task:
+      description: 定义受众、调性与核心信息
+      expected_output: 形成清晰可复用的品牌内容方向
+      agent: strategy
+    planner_task:
+      description: 规划主题、栏目与发布节奏
+      expected_output: 输出可执行的内容日历
+      agent: planner
+    creator_task:
+      description: 产出文案、脚本与创意方案
+      expected_output: 交付符合品牌调性的内容初稿
+      agent: creator
+    editor_task:
+      description: 统一质量、事实与表达
+      expected_output: 形成可发布终稿并记录修改依据
+      agent: editor
+    channel_task:
+      description: 适配渠道并规划互动
+      expected_output: 提升内容分发与反馈闭环
+      agent: channel
+  sop:
+    entry: strategy
+    stages:
+    - id: strategy
+      agents:
+      - strategy
+      requires_handoff: []
+      review_gate: false
+    - id: planning
+      agents:
+      - planner
+      requires_handoff:
+      - strategy
+      review_gate: true
+    - id: creation
+      agents:
+      - creator
+      requires_handoff:
+      - planning
+      review_gate: false
+    - id: review
+      agents:
+      - editor
+      requires_handoff:
+      - creation
+      review_gate: true
+    - id: distribution
+      agents:
+      - channel
+      requires_handoff:
+      - review
+      review_gate: false
+- id: market-research
+  version: 1
+  name: 市场研究团队
+  category: research
+  summary: 用可追溯证据完成市场、竞争和机会研究。
+  best_for: 行业洞察、竞品分析、用户与机会评估
+  coordination_pattern: 研究主管分题 + 并行取证 + 交叉审阅 + 综合结论
+  default_workspace_policy: isolated
+  industries:
+  - 研究
+  - 咨询
+  - 市场
+  pace_tags:
+  - steady
+  risk_tags:
+  - steady
+  - balanced
+  sources:
+  - autogen
+  - langgraph
+  - crewai
+  signals:
+  - label: 市场研究
+    keywords:
+    - 市场研究
+    - 行业
+    - 市场规模
+    - 趋势
+    - 机会
+    weight: 6
+  - label: 竞品用户
+    keywords:
+    - 竞品
+    - 竞争
+    - 用户研究
+    - 调研
+    - 洞察
+    weight: 4
+  agents:
+    lead:
+      role: 研究主管
+      goal: 保证研究范围和结论可追溯
+      backstory: 定义问题、证据标准与分析框架
+      skills:
+      - 研究设计
+      - 证据标准
+      - 综合判断
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    market:
+      role: 市场研究
+      goal: 形成市场结构与趋势判断
+      backstory: 收集行业、规模与趋势证据
+      skills:
+      - 行业研究
+      - 市场规模
+      - 趋势分析
+      optional: false
+      budget:
+        max_total_tokens: 24000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    competition:
+      role: 竞品分析
+      goal: 输出竞争格局和机会缺口
+      backstory: 比较产品、策略与差异化
+      skills:
+      - 竞品拆解
+      - 定位对比
+      - 机会识别
+      optional: false
+      budget:
+        max_total_tokens: 22000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    user:
+      role: 用户洞察
+      goal: 形成用户问题和细分洞察
+      backstory: 归纳需求、场景与决策因素
+      skills:
+      - 用户研究
+      - 场景分析
+      - 需求归纳
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    review:
+      role: 证据审校
+      goal: 标记证据等级并防止过度结论
+      backstory: 核验来源、冲突与不确定性
+      skills:
+      - 来源核验
+      - 偏差检查
+      - 不确定性表达
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    lead_task:
+      description: 定义问题、证据标准与分析框架
+      expected_output: 保证研究范围和结论可追溯
+      agent: lead
+    market_task:
+      description: 收集行业、规模与趋势证据
+      expected_output: 形成市场结构与趋势判断
+      agent: market
+    competition_task:
+      description: 比较产品、策略与差异化
+      expected_output: 输出竞争格局和机会缺口
+      agent: competition
+    user_task:
+      description: 归纳需求、场景与决策因素
+      expected_output: 形成用户问题和细分洞察
+      agent: user
+    review_task:
+      description: 核验来源、冲突与不确定性
+      expected_output: 标记证据等级并防止过度结论
+      agent: review
+  sop:
+    entry: planning
+    stages:
+    - id: planning
+      agents:
+      - lead
+      requires_handoff: []
+      review_gate: false
+    - id: research
+      agents:
+      - market
+      - competition
+      - user
+      requires_handoff:
+      - planning
+      review_gate: false
+    - id: review
+      agents:
+      - review
+      requires_handoff:
+      - research
+      review_gate: true
+- id: data-analysis
+  version: 1
+  name: 数据分析团队
+  category: data
+  summary: 从指标定义、数据检查到洞察建议的分析团队。
+  best_for: 经营分析、产品数据、指标诊断与决策支持
+  coordination_pattern: 问题定义 → 数据验证 → 分析建模 → 独立复核
+  default_workspace_policy: isolated
+  industries:
+  - 数据
+  - 分析
+  - 经营
+  pace_tags:
+  - steady
+  - fast
+  risk_tags:
+  - steady
+  - balanced
+  sources:
+  - langgraph
+  - semantic_kernel
+  - autogen
+  signals:
+  - label: 数据分析
+    keywords:
+    - 数据
+    - 分析
+    - 指标
+    - 报表
+    - dashboard
+    - 看板
+    weight: 6
+  - label: 诊断决策
+    keywords:
+    - 诊断
+    - 归因
+    - 预测
+    - 决策
+    - kpi
+    weight: 4
+  agents:
+    lead:
+      role: 分析负责人
+      goal: 把业务问题转为可验证分析计划
+      backstory: 定义决策问题、指标与边界
+      skills:
+      - 问题拆解
+      - 指标设计
+      - 分析规划
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    quality:
+      role: 数据质量
+      goal: 确认数据是否足以支持结论
+      backstory: 检查口径、缺失、异常与可用性
+      skills:
+      - 质量检查
+      - 口径核对
+      - 异常诊断
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    analyst:
+      role: 数据分析
+      goal: 输出透明可复现的分析结果
+      backstory: 完成探索、比较与驱动分析
+      skills:
+      - 探索分析
+      - 统计比较
+      - 驱动诊断
+      optional: false
+      budget:
+        max_total_tokens: 30000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    visual:
+      role: 洞察表达
+      goal: 形成清晰的结论和行动建议
+      backstory: 设计图表并组织决策叙事
+      skills:
+      - 数据可视化
+      - 洞察叙事
+      - 建议设计
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    review:
+      role: 方法复核
+      goal: 识别分析风险并给出发布意见
+      backstory: 独立检查方法、计算与结论
+      skills:
+      - 方法审查
+      - 计算复核
+      - 结论校准
+      optional: false
+      budget:
+        max_total_tokens: 18000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    lead_task:
+      description: 定义决策问题、指标与边界
+      expected_output: 把业务问题转为可验证分析计划
+      agent: lead
+    quality_task:
+      description: 检查口径、缺失、异常与可用性
+      expected_output: 确认数据是否足以支持结论
+      agent: quality
+    analyst_task:
+      description: 完成探索、比较与驱动分析
+      expected_output: 输出透明可复现的分析结果
+      agent: analyst
+    visual_task:
+      description: 设计图表并组织决策叙事
+      expected_output: 形成清晰的结论和行动建议
+      agent: visual
+    review_task:
+      description: 独立检查方法、计算与结论
+      expected_output: 识别分析风险并给出发布意见
+      agent: review
+  sop:
+    entry: planning
+    stages:
+    - id: planning
+      agents:
+      - lead
+      requires_handoff: []
+      review_gate: false
+    - id: quality
+      agents:
+      - quality
+      requires_handoff:
+      - planning
+      review_gate: true
+    - id: analysis
+      agents:
+      - analyst
+      requires_handoff:
+      - quality
+      review_gate: false
+    - id: storytelling
+      agents:
+      - visual
+      requires_handoff:
+      - analysis
+      review_gate: false
+    - id: review
+      agents:
+      - review
+      requires_handoff:
+      - storytelling
+      review_gate: true
+- id: customer-support
+  version: 1
+  name: 客户支持团队
+  category: support
+  summary: 覆盖分流、诊断、解决和知识沉淀的支持团队。
+  best_for: 客服流程、工单处理、技术支持与知识库建设
+  coordination_pattern: 分流主管 → 专家处理 → 质量复核 → 知识回写
+  default_workspace_policy: isolated
+  industries:
+  - 客服
+  - 服务
+  - 支持
+  pace_tags:
+  - fast
+  - steady
+  risk_tags:
+  - steady
+  - balanced
+  sources:
+  - semantic_kernel
+  - langgraph
+  signals:
+  - label: 客户支持
+    keywords:
+    - 客服
+    - 客户支持
+    - 工单
+    - 售后
+    - 服务
+    weight: 6
+  - label: 问题解决
+    keywords:
+    - 故障
+    - 问题处理
+    - 知识库
+    - faq
+    - 投诉
+    weight: 4
+  agents:
+    triage:
+      role: 支持分流
+      goal: 快速准确地路由客户问题
+      backstory: 识别意图、优先级与责任角色
+      skills:
+      - 意图识别
+      - 优先级判断
+      - 工单路由
+      optional: false
+      budget:
+        max_total_tokens: 16000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    service:
+      role: 客户服务
+      goal: 提供清晰一致的客户回复
+      backstory: 处理沟通、解释与一般问题
+      skills:
+      - 客户沟通
+      - 问题澄清
+      - 服务恢复
+      optional: false
+      budget:
+        max_total_tokens: 20000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    technical:
+      role: 技术支持
+      goal: 形成可复现的技术解决方案
+      backstory: 诊断复杂问题并给出解决步骤
+      skills:
+      - 故障诊断
+      - 解决方案
+      - 升级协作
+      optional: false
+      budget:
+        max_total_tokens: 26000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    quality:
+      role: 服务质检
+      goal: 降低错误回复和遗漏风险
+      backstory: 检查准确性、语气与合规
+      skills:
+      - 质量抽检
+      - 合规检查
+      - 改进建议
+      optional: false
+      budget:
+        max_total_tokens: 16000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+    knowledge:
+      role: 知识运营
+      goal: 更新可复用知识条目和流程
+      backstory: 把已解决问题沉淀为知识
+      skills:
+      - 知识提炼
+      - 内容维护
+      - 问题聚类
+      optional: true
+      budget:
+        max_total_tokens: 16000
+        max_wall_time_seconds: 1200
+        max_active_runtime_seconds: 600
+        max_llm_calls: 20
+        max_cost: 5.0
+        max_parallel_llm_calls: 2
+  tasks:
+    triage_task:
+      description: 识别意图、优先级与责任角色
+      expected_output: 快速准确地路由客户问题
+      agent: triage
+    service_task:
+      description: 处理沟通、解释与一般问题
+      expected_output: 提供清晰一致的客户回复
+      agent: service
+    technical_task:
+      description: 诊断复杂问题并给出解决步骤
+      expected_output: 形成可复现的技术解决方案
+      agent: technical
+    quality_task:
+      description: 检查准确性、语气与合规
+      expected_output: 降低错误回复和遗漏风险
+      agent: quality
+    knowledge_task:
+      description: 把已解决问题沉淀为知识
+      expected_output: 更新可复用知识条目和流程
+      agent: knowledge
+  sop:
+    entry: triage
+    stages:
+    - id: triage
+      agents:
+      - triage
+      requires_handoff: []
+      review_gate: false
+    - id: response
+      agents:
+      - service
+      - technical
+      requires_handoff:
+      - triage
+      review_gate: false
+    - id: quality
+      agents:
+      - quality
+      requires_handoff:
+      - response
+      review_gate: true
+    - id: knowledge
+      agents:
+      - knowledge
+      requires_handoff:
+      - quality
+      review_gate: false

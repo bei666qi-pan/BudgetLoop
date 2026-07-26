@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="BudgetLoop">
+  <defs>
+    <linearGradient id="bg" x1="118" y1="72" x2="900" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FCFF"/>
+      <stop offset="1" stop-color="#DCEFFF"/>
+    </linearGradient>
+    <filter id="shadow" x="-24%" y="-24%" width="148%" height="148%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#2A79E8" flood-opacity=".17"/>
+    </filter>
+  </defs>
+  <rect x="52" y="52" width="920" height="920" rx="224" fill="url(#bg)"/>
+  <rect x="76" y="76" width="872" height="872" rx="202" fill="none" stroke="#FFF" stroke-opacity=".9" stroke-width="16"/>
+  <g filter="url(#shadow)" fill="none" stroke="#2668E8" stroke-linecap="round" stroke-linejoin="round" stroke-width="74">
+    <path d="M515 512C515 618 429 704 323 704C217 704 131 618 131 512C131 406 217 320 323 320C429 320 515 406 515 512Z"/>
+    <path d="M509 512C509 406 595 320 701 320C807 320 893 406 893 512C893 618 807 704 701 704C595 704 509 618 509 512Z"/>
+  </g>
+  <circle cx="512" cy="512" r="38" fill="#F7FCFF"/>
+  <circle cx="512" cy="512" r="23" fill="#2668E8"/>
+</svg>

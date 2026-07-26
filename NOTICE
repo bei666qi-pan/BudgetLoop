@@ -1,0 +1,47 @@
+# NOTICE
+
+BudgetLoop 构建在以下开源项目之上，谨致谢意并遵守其许可证：
+
+## OpenHands (https://github.com/OpenHands/software-agent-sdk)
+
+- License: MIT（Copyright OpenHands contributors）
+- 用途：Agent 推理与工具循环内核。本项目通过其官方 agent-server
+  （`ghcr.io/openhands/agent-server`）的 REST/WebSocket API 驱动 conversation，
+  复用其事件模型（Action/Observation）、工具执行、上下文压缩（condenser）、
+  会话持久化与恢复能力。
+- 本项目 **不包含、不复制、不依赖** OpenHands `enterprise/` 目录中的任何受限代码，
+  也不 fork OpenHands Web UI。与 OpenHands 的交互全部隔离在
+  `backend/app/worker/openhands_client.py` 与 `workspace_manager.py` 适配层中。
+- 设计参考：BudgetLoop 的任务级编排（状态机、预算控制）为独立实现；
+  Agent Loop 内部机制不重写，直接复用 OpenHands。
+
+## Claude Code (Anthropic)
+
+- Claude Code 非开源软件。本项目仅参考其公开讨论的 Agent Loop / 工具使用
+  设计思想（小步推理-行动循环、工具结果驱动下一步），**未使用其任何源码**。
+
+## LiteLLM (https://github.com/BerriAI/litellm)
+
+- License: MIT
+- 用途：兼容模式模型网关（路由、虚拟 Key、支出日志、自定义回调）。
+  本项目的逐次 LLM 调用预算拦截通过 LiteLLM 自定义回调实现
+  （`litellm/budget_callback.py`）。
+
+## New API (https://github.com/QuantumNous/new-api)
+
+- License: AGPL-3.0（Copyright New API contributors）
+- 固定版本：`v1.0.0-rc.21`，revision
+  `bde9b2f44887d34ec54799ae191d50f97914359e`。
+- 用途：默认 AI API 网关，复用其 OpenAI Chat/Responses、Claude Messages、
+  Gemini 协议入口、自定义上游、渠道权重/优先级、失败重试、限流和管理控制台。
+- New API 作为独立进程通过 HTTP 与 BudgetLoop 通信；其 AGPL 源码和许可证保留在
+  `vendor/ai-gateways/new-api` 的可复现独立 checkout 中，不链接进 BudgetLoop。
+- 上游模型、API Key 和公开服务必须取得合法授权并遵守当地监管及上游条款。
+
+## 其他依赖
+
+- FastAPI (MIT)、SQLAlchemy (MIT)、Dramatiq (LGPL-3.0，仅作库引用)、
+  Next.js (MIT)、Tailwind CSS (MIT)、PostgreSQL (PostgreSQL License)、
+  Valkey (BSD-3-Clause)、MinIO (AGPL-3.0，仅通过其 S3 API 交互)。
+
+BudgetLoop 本身的许可证见 LICENSE。
