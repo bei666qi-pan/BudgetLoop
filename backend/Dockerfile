@@ -57,7 +57,9 @@ RUN --mount=type=cache,target=/root/.npm \
       "@google/gemini-cli@${GEMINI_CLI_VERSION}" \
     && codex --version \
     && gemini --version
-RUN apt-get update \
+RUN sed -i 's|http://deb.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' \
+      /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/* \
     && git --version
