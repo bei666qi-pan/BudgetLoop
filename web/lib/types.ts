@@ -143,6 +143,7 @@ export interface BudgetState {
   remaining_calls?: number | null;
   remaining_cost?: number | null;
   projected_tokens?: number | null;
+  unlimited?: boolean;
 }
 
 export interface RunDetail {
@@ -529,6 +530,8 @@ export interface CreateTeamFromPresetRequest {
   role_overrides: TeamRoleOverride[];
   start_immediately: boolean;
   default_execution_engine: string;
+  team_mode?: "guided" | "autonomous";
+  budget_mode?: "bounded" | "max";
   folder_access?: FolderAccess;
   project_dir?: string | null;
   full_access_acknowledged?: boolean;
@@ -642,6 +645,8 @@ export interface TeamPresetSnapshot {
     worktree_required: boolean;
   };
   recommendation_source?: "ai" | "local_fallback" | "manual" | null;
+  team_mode?: "guided" | "autonomous";
+  budget_mode?: "bounded" | "max";
 }
 
 export interface ExecutionEngineInfo {

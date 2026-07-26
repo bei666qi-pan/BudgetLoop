@@ -6,6 +6,7 @@
 - 区分 used / reserved / remaining / projected；
 - 所有时间判定用数据库 now()，防 worker 时钟漂移。
 """
+
 from __future__ import annotations
 
 import uuid
@@ -22,9 +23,14 @@ RESERVE_SQL = text(
         reserved_tokens = reserved_tokens + :est_tokens,
         reserved_cost   = reserved_cost + :est_cost
     WHERE run_id = :run_id
-      AND used_calls + reserved_calls < max_llm_calls
-      AND used_tokens + reserved_tokens + :est_tokens <= max_total_tokens
-      AND used_cost + reserved_cost + :est_cost <= max_cost
+      AND (
+        COALESCE((SELECT model_config ->> 'budget_mode' FROM task_runs WHERE id = :run_id), '') = 'max'
+        OR (
+          used_calls + reserved_calls < max_llm_calls
+          AND used_tokens + reserved_tokens + :est_tokens <= max_total_tokens
+          AND used_cost + reserved_cost + :est_cost <= max_cost
+        )
+      )
       AND EXISTS (SELECT 1 FROM task_runs WHERE id = :run_id AND (deadline_at IS NULL OR now() < deadline_at))
     RETURNING reserved_calls
     """
@@ -79,17 +85,24 @@ class BudgetSnapshot:
     reserved_tokens: int
     reserved_cost: float
     reserved_calls: int
+    unlimited: bool = False
 
     @property
-    def remaining_tokens(self) -> int:
+    def remaining_tokens(self) -> int | None:
+        if self.unlimited:
+            return None
         return self.max_total_tokens - self.used_tokens - self.reserved_tokens
 
     @property
-    def remaining_calls(self) -> int:
+    def remaining_calls(self) -> int | None:
+        if self.unlimited:
+            return None
         return self.max_llm_calls - self.used_calls - self.reserved_calls
 
     @property
-    def remaining_cost(self) -> float:
+    def remaining_cost(self) -> float | None:
+        if self.unlimited:
+            return None
         return float(self.max_cost) - float(self.used_cost) - float(self.reserved_cost)
 
     @property
@@ -115,6 +128,7 @@ class BudgetSnapshot:
             "remaining_calls": self.remaining_calls,
             "remaining_cost": self.remaining_cost,
             "projected_tokens": self.projected_tokens,
+            "unlimited": self.unlimited,
         }
 
 
@@ -149,14 +163,20 @@ class TaskBudgetManager:
 
     def release(self, est_tokens: int, est_cost: float) -> None:
         """调用未发生/失败时释放预留。"""
-        self.session.execute(RELEASE_SQL, {"run_id": self.run_id, "est_tokens": est_tokens, "est_cost": est_cost})
+        self.session.execute(
+            RELEASE_SQL, {"run_id": self.run_id, "est_tokens": est_tokens, "est_cost": est_cost}
+        )
 
     def snapshot(self) -> BudgetSnapshot:
         from app.core.models import TaskBudget
 
-        b = self.session.get(TaskBudget, uuid.UUID(self.run_id))
+        run_id = uuid.UUID(self.run_id)
+        b = self.session.get(TaskBudget, run_id)
         if b is None:
             raise BudgetRejected("budget row missing")
+        from app.core.models import TaskRun
+
+        run = self.session.get(TaskRun, run_id)
         return BudgetSnapshot(
             max_total_tokens=b.max_total_tokens,
             max_wall_time_seconds=b.max_wall_time_seconds,
@@ -170,10 +190,13 @@ class TaskBudgetManager:
             reserved_tokens=b.reserved_tokens,
             reserved_cost=float(b.reserved_cost),
             reserved_calls=b.reserved_calls,
+            unlimited=bool((run.model_config or {}).get("budget_mode") == "max") if run else False,
         )
 
     @staticmethod
     def _reject_reason(snap: BudgetSnapshot) -> str:
+        if snap.unlimited:
+            return "budget check failed"
         if snap.remaining_calls <= 0:
             return "max_llm_calls reached"
         if snap.remaining_tokens <= 0:

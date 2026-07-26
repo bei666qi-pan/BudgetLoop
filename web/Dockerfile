@@ -1,4 +1,6 @@
-ARG NODE_IMAGE=docker.m.daocloud.io/library/node:20-alpine
+# Use Docker's official image name by default.  Operators who need an approved
+# regional mirror can still set NODE_IMAGE explicitly at build time.
+ARG NODE_IMAGE=node:20-alpine
 
 # Stage 1: dependencies
 FROM ${NODE_IMAGE} AS deps

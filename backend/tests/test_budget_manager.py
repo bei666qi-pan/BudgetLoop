@@ -1,4 +1,5 @@
 """TaskBudgetManager 行为测试（需要 docker 起 PG：CAS SQL 依赖 now()/RETURNING）。"""
+
 from __future__ import annotations
 
 import threading
@@ -146,3 +147,23 @@ def test_reserve_rejected_after_deadline(pg_session):
     pg_session.commit()
     with pytest.raises(BudgetRejected):
         TaskBudgetManager(pg_session, run_id).reserve(est_tokens=10, est_cost=0.01)
+
+
+def test_max_budget_bypasses_caps_but_keeps_accounting(pg_session):
+    run_id = _make_run(pg_session, max_total_tokens=1, max_llm_calls=1, max_cost=0.01)
+    run = pg_session.get(TaskRun, run_id)
+    run.model_config = {"budget_mode": "max"}
+    run.deadline_at = None
+    pg_session.commit()
+
+    manager = TaskBudgetManager(pg_session, run_id)
+    manager.reserve(est_tokens=10_000, est_cost=99.0)
+    manager.settle(est_tokens=10_000, est_cost=99.0, actual_tokens=5_000, actual_cost=12.5)
+    pg_session.commit()
+
+    snapshot = manager.snapshot()
+    assert snapshot.unlimited is True
+    assert snapshot.used_tokens == 5_000
+    assert snapshot.used_calls == 1
+    assert snapshot.remaining_tokens is None
+    assert snapshot.to_dict()["unlimited"] is True
