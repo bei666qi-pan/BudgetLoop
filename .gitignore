@@ -21,10 +21,13 @@ out/
 # Runtime data
 artifacts/
 workspace-data/
+.budgetloop/
 *.log
 
 # Generated application bundles
 BudgetLoop.app/
+desktop/windows/src-tauri/gen/
+desktop/windows/src-tauri/target/
 desktop/build/
 
 # OS

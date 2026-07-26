@@ -1,4 +1,13 @@
-import type { AIGatewayStatus, TeamPreset, TeamPresetRole, TeamRoleDraft } from "@/lib/types";
+import type { AIGatewayStatus, BudgetConfig, TeamPreset, TeamPresetRole, TeamRoleDraft, TeamRoleOverride } from "@/lib/types";
+
+export const ROLE_BUDGET_LIMITS = {
+  max_total_tokens: 200_000,
+  max_wall_time_seconds: 7_200,
+  max_active_runtime_seconds: 3_600,
+  max_llm_calls: 100,
+  max_cost: 50,
+  max_parallel_llm_calls: 8,
+} as const;
 
 export const CATEGORY_LABELS: Record<string, string> = {
   all: "全部",
@@ -80,6 +89,29 @@ export function compactStars(stars: number): string {
 export function roleBoundsValid(roles: TeamRoleDraft[]): boolean {
   const count = enabledRoles(roles).length;
   return count >= 2 && count <= 8;
+}
+
+export function roleBudgetValid(budget: BudgetConfig): boolean {
+  const boundedInteger = (value: number, maximum: number) =>
+    Number.isInteger(value) && value >= 1 && value <= maximum;
+  return boundedInteger(budget.max_total_tokens, ROLE_BUDGET_LIMITS.max_total_tokens)
+    && boundedInteger(budget.max_wall_time_seconds, ROLE_BUDGET_LIMITS.max_wall_time_seconds)
+    && boundedInteger(budget.max_active_runtime_seconds, ROLE_BUDGET_LIMITS.max_active_runtime_seconds)
+    && boundedInteger(budget.max_llm_calls, ROLE_BUDGET_LIMITS.max_llm_calls)
+    && Number.isFinite(budget.max_cost) && budget.max_cost > 0 && budget.max_cost <= ROLE_BUDGET_LIMITS.max_cost
+    && boundedInteger(budget.max_parallel_llm_calls, ROLE_BUDGET_LIMITS.max_parallel_llm_calls);
+}
+
+export function roleOverride(role: TeamRoleDraft): TeamRoleOverride {
+  if (!role.enabled) return { key: role.key, enabled: false };
+  return {
+    key: role.key,
+    enabled: true,
+    role: role.role.trim(),
+    goal: role.goal.trim(),
+    budget: { ...role.budget },
+    execution_engine: role.execution_engine,
+  };
 }
 
 export function safeGatewayConsoleUrl(status: AIGatewayStatus | null): string | null {

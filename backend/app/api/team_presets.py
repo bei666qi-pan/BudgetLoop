@@ -1,4 +1,5 @@
 """Beginner-first Agent Team catalog, recommendation and one-click creation APIs."""
+
 from __future__ import annotations
 
 import uuid
@@ -18,6 +19,7 @@ from app.api.work_containers import (
     _container_or_404,
     _create_work_session_records,
 )
+from app.collaboration.autonomous import eligible_autonomous_runs, is_autonomous
 from app.core.db import get_db
 from app.core.enums import RunStatus, Strategy, TaskTemplate, WorkspacePolicy
 from app.core.models import TaskRun, WorkContainer, WorkSession, utcnow
@@ -39,9 +41,7 @@ from app.team_presets.catalog import RolePreset, budget_to_dict
 
 router = APIRouter(tags=["agent-team-presets"])
 DbSession = Annotated[Session, Depends(get_db)]
-RequiredIdempotencyKey = Annotated[
-    str, Header(alias="Idempotency-Key", min_length=8, max_length=100)
-]
+RequiredIdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=100)]
 
 MAX_ROLE_TOKENS = 200_000
 MAX_ROLE_WALL_SECONDS = 7_200
@@ -73,14 +73,10 @@ class RoleBudgetOverride(BaseModel):
 
     max_total_tokens: int | None = Field(default=None, ge=1, le=MAX_ROLE_TOKENS)
     max_wall_time_seconds: int | None = Field(default=None, ge=1, le=MAX_ROLE_WALL_SECONDS)
-    max_active_runtime_seconds: int | None = Field(
-        default=None, ge=1, le=MAX_ROLE_ACTIVE_SECONDS
-    )
+    max_active_runtime_seconds: int | None = Field(default=None, ge=1, le=MAX_ROLE_ACTIVE_SECONDS)
     max_llm_calls: int | None = Field(default=None, ge=1, le=MAX_ROLE_CALLS)
     max_cost: float | None = Field(default=None, gt=0, le=MAX_ROLE_COST)
-    max_parallel_llm_calls: int | None = Field(
-        default=None, ge=1, le=MAX_ROLE_PARALLEL_CALLS
-    )
+    max_parallel_llm_calls: int | None = Field(default=None, ge=1, le=MAX_ROLE_PARALLEL_CALLS)
 
 
 class RoleOverride(BaseModel):
@@ -108,6 +104,8 @@ class CreateTeamFromPresetRequest(BaseModel):
     role_overrides: list[RoleOverride] = Field(default_factory=list, max_length=8)
     start_immediately: bool = True
     default_execution_engine: str = Field(default=DEFAULT_ENGINE_ID, min_length=1, max_length=50)
+    team_mode: Literal["guided", "autonomous"] = "guided"
+    budget_mode: Literal["bounded", "max"] = "bounded"
     folder_access: FolderAccess = "isolated"
     project_dir: str | None = Field(default=None, max_length=500)
     full_access_acknowledged: bool = False
@@ -149,15 +147,11 @@ class CreateTeamFromPresetRequest(BaseModel):
         if self.project_upload_id is not None and (
             self.folder_access != "isolated" or self.project_dir is not None
         ):
-            raise ValueError(
-                "project_upload_id is only valid for isolated access without project_dir"
-            )
+            raise ValueError("project_upload_id is only valid for isolated access without project_dir")
         return self
 
 
-def _applied_role(
-    role: RolePreset, override: RoleOverride | None, default_execution_engine: str
-) -> dict:
+def _applied_role(role: RolePreset, override: RoleOverride | None, default_execution_engine: str) -> dict:
     budget = budget_to_dict(role.budget)
     if override and override.budget:
         budget.update(override.budget.model_dump(exclude_none=True))
@@ -169,9 +163,7 @@ def _applied_role(
         "skills": list(role.skills),
         "budget": budget,
         "execution_engine": (
-            override.execution_engine
-            if override and override.execution_engine
-            else default_execution_engine
+            override.execution_engine if override and override.execution_engine else default_execution_engine
         ),
     }
 
@@ -257,6 +249,10 @@ def _ordered_runs(container: WorkContainer) -> list[TaskRun]:
     return ordered
 
 
+def _runnable_runs(container: WorkContainer) -> list[TaskRun]:
+    return eligible_autonomous_runs(container) if is_autonomous(container) else _ordered_runs(container)
+
+
 @router.get("/work-container-presets")
 def get_work_container_presets(
     category: Annotated[str | None, Query(max_length=50)] = None,
@@ -271,8 +267,7 @@ def get_work_container_presets(
         "runtime": {
             "graph": "LangGraph",
             "configuration_required": False,
-            "recommendation_remote_calls": gateway.configured
-            and gateway.recommendation_enabled,
+            "recommendation_remote_calls": gateway.configured and gateway.recommendation_enabled,
             "ai_preferred": True,
             "local_fallback": True,
             "gateway_type": gateway.kind,
@@ -320,9 +315,7 @@ def create_team_from_preset(
         raise HTTPException(status_code=422, detail=f"unknown preset roles: {sorted(unknown_roles)}")
     requested_engines = {body.default_execution_engine}
     requested_engines.update(
-        override.execution_engine
-        for override in body.role_overrides
-        if override.execution_engine
+        override.execution_engine for override in body.role_overrides if override.execution_engine
     )
     unknown_engines = sorted(engine_id for engine_id in requested_engines if get_engine(engine_id) is None)
     if unknown_engines:
@@ -333,9 +326,7 @@ def create_team_from_preset(
         override = overrides.get(role.key)
         enabled = override.enabled if override is not None else not role.optional
         if enabled:
-            applied_roles.append(
-                _applied_role(role, override, body.default_execution_engine)
-            )
+            applied_roles.append(_applied_role(role, override, body.default_execution_engine))
     if not 2 <= len(applied_roles) <= 8:
         raise HTTPException(status_code=422, detail="a team must enable 2 to 8 roles")
     if body.start_immediately:
@@ -399,13 +390,11 @@ def create_team_from_preset(
             ),
             idempotency_key=applied["key"],
             model_config_overrides={
+                "team_mode": body.team_mode,
+                "budget_mode": body.budget_mode,
                 "folder_access": body.folder_access,
                 **({"project_dir": body.project_dir} if body.project_dir else {}),
-                **(
-                    {"project_upload_id": str(body.project_upload_id)}
-                    if body.project_upload_id
-                    else {}
-                ),
+                **({"project_upload_id": str(body.project_upload_id)} if body.project_upload_id else {}),
             },
         )
         applied["session_id"] = str(item.id)
@@ -421,14 +410,12 @@ def create_team_from_preset(
         "workspace_access": {
             "folder_access": body.folder_access,
             "project_dir": body.project_dir,
-            **(
-                {"project_upload_id": str(body.project_upload_id)}
-                if body.project_upload_id
-                else {}
-            ),
+            **({"project_upload_id": str(body.project_upload_id)} if body.project_upload_id else {}),
             "worktree_required": body.folder_access == "full_access",
         },
         "recommendation_source": body.recommendation_source,
+        "team_mode": body.team_mode,
+        "budget_mode": body.budget_mode,
         "setup_intent": {
             "acceptance_criteria": body.acceptance_criteria,
         },
@@ -440,7 +427,7 @@ def create_team_from_preset(
     dispatch: dict[str, list] = {"accepted": [], "skipped": [], "warnings": []}
     if body.start_immediately:
         container = _container_or_404(session, container.id)
-        dispatch = _dispatch_runs(session, container, _ordered_runs(container))
+        dispatch = _dispatch_runs(session, container, _runnable_runs(container))
         container = _container_or_404(session, container.id)
     else:
         container = _container_or_404(session, container.id)
@@ -453,4 +440,4 @@ def start_preset_team(container_id: uuid.UUID, session: DbSession) -> dict:
     container = _container_or_404(session, container_id)
     if not container.preset_id or not container.preset_snapshot:
         raise HTTPException(status_code=409, detail="work container was not created from a preset")
-    return _dispatch_runs(session, container, _ordered_runs(container))
+    return _dispatch_runs(session, container, _runnable_runs(container))

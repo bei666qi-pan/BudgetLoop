@@ -278,30 +278,27 @@ final class LauncherCore {
         gatewayConfigured = gatewayEnv != nil
         buildComposeEnv(gatewayEnv: gatewayEnv)
         let stackAlreadyHealthy = httpOK("http://localhost:8000/api/health") && httpOK(webURL, lax: true)
-        if stackAlreadyHealthy && !gatewayServicesNeedRefresh(gatewayEnv) {
+        if stackAlreadyHealthy {
+            // A responding stack can still have been built from an older local
+            // checkout.  Let Docker reuse its cache but always rebuild the
+            // stateless application services before showing the desktop UI.
+            // PostgreSQL, Valkey, New API and every volume are deliberately
+            // omitted so an adopted stack's data is never restarted or reset.
             adopted = true
-            log("检测到健康的运行中服务栈，进入接管（adopt）模式")
-            status("检测到已在运行的 BudgetLoop 服务，直接接管…")
-        } else if stackAlreadyHealthy {
-            // The app did not start this stack, but it can safely refresh only
-            // the two stateless services that consume the new ephemeral
-            // Keychain-derived gateway environment.  Keep all data services
-            // running and never mark the adopted stack for teardown.
-            adopted = true
-            status("正在将已保存的 AI 网关配置应用到控制面…")
+            status("正在刷新本地应用代码…")
             let result = runSync(docker,
-                                 ["compose", "up", "-d", "--force-recreate", "control-plane", "worker"],
+                                 ["compose", "up", "-d", "--build", "control-plane", "worker", "web"],
                                  cwd: repoRoot,
                                  extraEnv: composeEnv,
-                                 timeout: 300)
+                                 timeout: 900)
             guard result.status == 0 else {
                 let tail = String(redactedComposeOutput(result.output).suffix(800))
-                fail(step: "应用 AI 网关配置",
-                     message: "无法刷新控制面（退出码 \(result.status)）。\n\(tail)",
-                     remedy: "请确认 Docker Desktop 正常运行后重试；不会修改已保存的网关地址或密钥。")
+                fail(step: "刷新本地应用代码",
+                     message: "无法重建应用服务（退出码 \(result.status)）。\n\(tail)",
+                     remedy: "请确认 Docker Desktop 正常运行，并在仓库目录执行 `docker compose up -d --build control-plane worker web` 后重试。不会修改本地数据或已保存的网关密钥。")
                 return
             }
-            log("已刷新 control-plane 与 worker 的临时网关环境")
+            log("已刷新 control-plane、worker 与 web；数据服务保持运行")
         } else {
             // Port-conflict detection before compose up.
             for check in healthChecks where portBound(check.port) && !httpOK(check.url, lax: check.lax) {
@@ -314,7 +311,7 @@ final class LauncherCore {
             status("正在启动 BudgetLoop 服务（docker compose up，首次运行可能需要构建镜像）…")
             startAgentImagePull() // 非阻塞，与 compose up 并行
             let result = runSync(docker,
-                                 ["compose", "up", "-d",
+                                 ["compose", "up", "-d", "--build",
                                   "postgres", "valkey", "new-api",
                                   "control-plane", "worker", "web"],
                                  cwd: repoRoot,
@@ -361,9 +358,9 @@ final class LauncherCore {
 
     // MARK: Repo root resolution
 
-    /// 默认取 App 包的相对位置（desktop/BudgetLoop.app → ../..，即向上找含
-    /// docker-compose.yml 的目录；拷到仓库根部的 BudgetLoop.app 同样适用），
-    /// 可用 BUDGETLOOP_REPO 环境变量覆盖。
+    /// 默认从 App 包周边寻找含 docker-compose.yml 的目录：仓库内 App 可直接
+    /// 命中父目录，桌面快捷副本则命中同名相邻项目目录。仍可用
+    /// BUDGETLOOP_REPO 环境变量覆盖。
     private func resolveRepoRoot() -> URL {
         if let override = ProcessInfo.processInfo.environment["BUDGETLOOP_REPO"],
            !override.isEmpty {
@@ -372,7 +369,11 @@ final class LauncherCore {
         let bundleURL = Bundle.main.bundleURL
         let parent = bundleURL.deletingLastPathComponent()
         let grandparent = parent.deletingLastPathComponent()
-        for candidate in [parent, grandparent] {
+        let adjacentProject = parent.appendingPathComponent(
+            bundleURL.deletingPathExtension().lastPathComponent,
+            isDirectory: true
+        )
+        for candidate in [parent, adjacentProject, grandparent] {
             let composeFile = candidate.appendingPathComponent("docker-compose.yml")
             if FileManager.default.fileExists(atPath: composeFile.path) {
                 return candidate
@@ -473,6 +474,25 @@ final class LauncherCore {
         // block native app reads of dotfiles, so the launcher only supplies
         // the ephemeral Keychain-derived gateway overlay here.
         var env: [String: String] = [:]
+        // Gemini CLI 通过宿主 Docker socket 创建 sibling sandbox。Docker
+        // 守护进程只认识宿主路径，因此 worker 内 cwd 必须与宿主绝对路径一致。
+        // 该路径由实际 repoRoot 动态生成，不依赖用户名或固定安装位置。
+        let cliWorkspaceRoot = repoRoot
+            .appendingPathComponent(".budgetloop/workspaces/cli", isDirectory: true)
+            .standardizedFileURL
+        let cliEngineStateRoot = repoRoot
+            .appendingPathComponent(".budgetloop/engine-state", isDirectory: true)
+            .standardizedFileURL
+        try? FileManager.default.createDirectory(
+            at: cliWorkspaceRoot,
+            withIntermediateDirectories: true
+        )
+        try? FileManager.default.createDirectory(
+            at: cliEngineStateRoot,
+            withIntermediateDirectories: true
+        )
+        env["CLI_WORKSPACE_ROOT"] = cliWorkspaceRoot.path
+        env["CLI_ENGINE_STATE_ROOT"] = cliEngineStateRoot.path
         if let gatewayEnv = gatewayEnv {
             env.merge(gatewayEnv) { _, new in new }
         }

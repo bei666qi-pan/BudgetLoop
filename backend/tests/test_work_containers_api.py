@@ -1,4 +1,5 @@
 """Integration coverage for work-container isolation and additive task ownership."""
+
 from __future__ import annotations
 
 import os
@@ -11,11 +12,13 @@ os.environ.setdefault("SKIP_MIGRATIONS", "1")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.ai_gateway import resolve_gateway_config  # noqa: E402
+from app.collaboration.autonomous import release_autonomous_stages  # noqa: E402
 from app.core.config import Settings, settings  # noqa: E402
 from app.core.db import get_db  # noqa: E402
 from app.core.enums import EventType  # noqa: E402
 from app.core.models import (  # noqa: E402
     ExecutionEvent,
+    SessionMessage,
     Task,
     TaskBudget,
     TaskRun,
@@ -135,9 +138,7 @@ def test_nested_ownership_message_idempotency_and_pause(client):
     sender = _session(c, container["id"], key="sender", role="架构设计")["session"]
     recipient = _session(c, container["id"], key="recipient", role="后端实现")["session"]
 
-    foreign = c.get(
-        f"/api/work-containers/{other['id']}/sessions/{recipient['id']}", headers=AUTH
-    )
+    foreign = c.get(f"/api/work-containers/{other['id']}/sessions/{recipient['id']}", headers=AUTH)
     assert foreign.status_code == 404
 
     path = f"/api/work-containers/{container['id']}/sessions/{recipient['id']}/messages"
@@ -195,9 +196,7 @@ def test_session_transcript_labels_agent_output_and_explicit_handoff(client, pg_
     )
     pg_session.commit()
 
-    detail = c.get(
-        f"/api/work-containers/{container['id']}/sessions/{recipient['id']}", headers=AUTH
-    ).json()
+    detail = c.get(f"/api/work-containers/{container['id']}/sessions/{recipient['id']}", headers=AUTH).json()
     assert {entry["entry_type"] for entry in detail["transcript"]} == {
         "handoff",
         "agent_output",
@@ -230,9 +229,7 @@ def test_preset_catalog_and_local_langgraph_recommendation(client, monkeypatch):
         "gateway_type": "new-api",
     }
     assert all(
-        source["reviewed_stars"] >= 10_000
-        for preset in payload["presets"]
-        for source in preset["sources"]
+        source["reviewed_stars"] >= 10_000 for preset in payload["presets"] for source in preset["sources"]
     )
     assert c.get("/api/work-container-presets?category=unknown", headers=AUTH).status_code == 422
 
@@ -307,10 +304,59 @@ def test_create_team_later_is_atomic_idempotent_and_retry_safe(client, pg_sessio
     assert stored.idempotency_key == "team-game-001"
     assert stored.preset_snapshot["dispatch"]["dispatched_run_ids"]
     assert all(
-        pg_session.get(TaskRun, uuid.UUID(item["current_run_id"])).model_config["folder_access"]
-        == "isolated"
+        pg_session.get(TaskRun, uuid.UUID(item["current_run_id"])).model_config["folder_access"] == "isolated"
         for item in container["sessions"]
     )
+
+
+def test_autonomous_max_team_starts_entry_stage_and_releases_handoffs(client, pg_session):
+    c, enqueued = client
+    response = c.post(
+        "/api/work-containers/from-preset",
+        headers={**AUTH, "Idempotency-Key": "team-autonomous-max-001"},
+        json={
+            "preset_id": "software-delivery",
+            "preset_version": 1,
+            "name": "自主交付",
+            "project_goal": "并行完成应用交付并在阶段间自动移交",
+            "base_workdir": "/workspace/autonomous",
+            "team_mode": "autonomous",
+            "budget_mode": "max",
+            "start_immediately": True,
+        },
+    )
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    container = payload["container"]
+    assert container["preset_snapshot"]["team_mode"] == "autonomous"
+    assert container["preset_snapshot"]["budget_mode"] == "max"
+    assert len(enqueued) == 1  # discovery is the only dependency-free stage
+    first = next(item for item in container["sessions"] if item["role"] == "产品负责人")
+    first_run = pg_session.get(TaskRun, uuid.UUID(first["current_run_id"]))
+    assert first_run is not None
+    assert first_run.deadline_at is None
+    assert first_run.model_config["team_mode"] == "autonomous"
+    assert first_run.model_config["budget_mode"] == "max"
+
+    pg_session.add(
+        ExecutionEvent(
+            run_id=first_run.id,
+            type=EventType.AGENT_MESSAGE.value,
+            payload={"text": "接口范围和验收条件已确认。"},
+        )
+    )
+    first_run.status = "COMPLETED"
+    pg_session.commit()
+    released = release_autonomous_stages(pg_session, first_run)
+    pg_session.commit()
+
+    assert len(released) == 1
+    handoffs = pg_session.query(SessionMessage).filter_by(container_id=uuid.UUID(container["id"])).all()
+    assert len(handoffs) == 1
+    assert handoffs[0].kind == "handoff"
+    assert handoffs[0].author_type == "agent"
+    assert "接口范围" in handoffs[0].content
+    assert release_autonomous_stages(pg_session, first_run) == []
 
 
 def test_full_access_team_persists_acknowledged_path_and_worktrees(client, pg_session):
@@ -421,9 +467,7 @@ def test_create_team_applies_bounded_overrides_and_starts_in_sop_order(client, p
     assert result["dispatch"]["warnings"] == []
     assert result["dispatch"]["accepted"] == enqueued
     assert len(enqueued) == 4
-    specialist = next(
-        item for item in result["container"]["sessions"] if item["role"] == "零售流程专家"
-    )
+    specialist = next(item for item in result["container"]["sessions"] if item["role"] == "零售流程专家")
     budget = pg_session.get(TaskBudget, uuid.UUID(specialist["current_run_id"]))
     assert budget is not None
     assert budget.max_total_tokens == 12345
@@ -454,9 +498,7 @@ def test_preset_creation_rejects_missing_key_unknown_roles_and_unsafe_bounds(cli
         headers={**AUTH, "Idempotency-Key": "team-invalid-02"},
         json={
             **base,
-            "role_overrides": [
-                {"key": "specialist", "budget": {"max_total_tokens": 999_999}}
-            ],
+            "role_overrides": [{"key": "specialist", "budget": {"max_total_tokens": 999_999}}],
         },
     )
     assert over_budget.status_code == 422
@@ -508,9 +550,7 @@ def test_preset_dispatch_failure_is_truthful_and_retryable(client, monkeypatch):
     assert len(accepted) == 5
 
 
-def test_preset_creation_rolls_back_all_records_on_mid_transaction_failure(
-    pg_engine, monkeypatch
-):
+def test_preset_creation_rolls_back_all_records_on_mid_transaction_failure(pg_engine, monkeypatch):
     from sqlalchemy.orm import Session
 
     import app.api.team_presets as preset_api
@@ -554,4 +594,4 @@ def test_preset_creation_rolls_back_all_records_on_mid_transaction_failure(
 
     with Session(pg_engine) as database:
         assert database.query(WorkContainer).filter_by(idempotency_key="team-atomic-failure").count() == 0
-        assert database.query(Task).filter(Task.name.like("原子失败验证%" )).count() == 0
+        assert database.query(Task).filter(Task.name.like("原子失败验证%")).count() == 0

@@ -1,0 +1,19 @@
+[package]
+name = "budgetloop-windows-launcher"
+version = "0.1.0"
+description = "Native Windows launcher for a local BudgetLoop checkout"
+authors = ["BudgetLoop"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "budgetloop_windows_launcher"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tokio = { version = "1", features = ["sync"] }
