@@ -173,6 +173,12 @@ def managed_runtime_environment(
         else source.managed_ai_runtime_base_url
     ).rstrip("/")
     gemini_base_url = base_url[:-3] if base_url.endswith("/v1") else base_url
+    container_base_url = source.managed_ai_runtime_container_base_url.rstrip("/")
+    container_gemini_base_url = (
+        container_base_url[:-3]
+        if container_base_url.endswith("/v1")
+        else container_base_url
+    )
     model = config.default_model or config.recommendation_model
     return {
         "OPENAI_BASE_URL": base_url,
@@ -180,6 +186,11 @@ def managed_runtime_environment(
         "OPENAI_MODEL": model,
         "GOOGLE_GEMINI_BASE_URL": gemini_base_url,
         "GEMINI_API_KEY": token,
+        "GEMINI_API_KEY_AUTH_MECHANISM": "bearer",
         "GEMINI_MODEL": model,
+        # Gemini CLI relaunches inside a sibling Docker sandbox. Keep this
+        # non-secret alternate origin process-only so that container can reach
+        # the control plane without changing Codex's worker-local route.
+        "BUDGETLOOP_AI_CONTAINER_GEMINI_BASE_URL": container_gemini_base_url,
         "BUDGETLOOP_AI_MANAGED": "1",
     }

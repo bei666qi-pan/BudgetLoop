@@ -1,13 +1,9 @@
 import Foundation
-import LocalAuthentication
 import Security
 
 enum NativeGatewaySettingsStore {
     static let keychainService = "BudgetLoop AI Gateway API Key"
     private static let replacementKeychainService = "BudgetLoop AI Gateway API Key v2"
-    private static let legacyReadQueue = DispatchQueue(label: "com.budgetloop.keychain.legacy-read")
-    private static let replacementReadQueue = DispatchQueue(label: "com.budgetloop.keychain.replacement-read")
-    private static let automaticReadTimeout: DispatchTimeInterval = .seconds(1)
     private static let allowedKinds = Set(["compatible", "new-api", "litellm"])
     private static let stringFields = [
         "kind", "base_url", "console_url", "recommendation_model", "default_model",
@@ -19,74 +15,41 @@ enum NativeGatewaySettingsStore {
             ? [replacementKeychainService, keychainService]
             : [service]
         for candidate in services {
-            let queue = candidate == keychainService ? legacyReadQueue : replacementReadQueue
-            if let secret = readSecretFromService(candidate, on: queue) {
+            if let secret = readSecretWithSystemTool(candidate) {
                 return secret
             }
         }
         return nil
     }
 
-    private static func readSecretFromService(_ service: String, on queue: DispatchQueue) -> String? {
-        let result = SecretResult()
-        let completed = DispatchSemaphore(value: 0)
-        queue.async {
-            result.set(self.readSecretSynchronously(service))
-            completed.signal()
-        }
-        guard completed.wait(timeout: .now() + automaticReadTimeout) == .success else {
+    private static func readSecretWithSystemTool(_ service: String) -> String? {
+        // Security.framework + LAContext can block indefinitely under some
+        // managed-device policies even when interaction is disabled. The
+        // system Keychain CLI uses the same login Keychain and returns without
+        // showing UI for our after-first-unlock item. Output stays process-only.
+        let result = runSync(
+            "/usr/bin/security",
+            ["find-generic-password", "-a", NSUserName(), "-s", service, "-w"],
+            timeout: 5
+        )
+        guard result.status == 0, !result.timedOut else {
             return nil
         }
-        return result.get()
-    }
-
-    private static func readSecretSynchronously(_ service: String) -> String? {
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        let query: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrAccount: NSUserName(),
-            kSecAttrService: service,
-            // Automatic launcher bootstrap must never display an invisible
-            // Keychain prompt from its background queue. An item requiring
-            // interaction is treated as unavailable and can be replaced from
-            // BudgetLoop's foreground settings page.
-            kSecUseAuthenticationContext: context,
-            kSecReturnData: true,
-            kSecMatchLimit: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let secret = String(data: data, encoding: .utf8),
-              !secret.isEmpty else {
-            return nil
-        }
-        return secret
-    }
-
-    private final class SecretResult: @unchecked Sendable {
-        private let lock = NSLock()
-        private var value: String?
-
-        func set(_ secret: String?) {
-            lock.lock()
-            value = secret
-            lock.unlock()
-        }
-
-        func get() -> String? {
-            lock.lock()
-            defer { lock.unlock() }
-            return value
-        }
+        let secret = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return secret.isEmpty ? nil : secret
     }
 
     static func save(settings: [String: Any], apiKey: String?) throws -> [String: Any] {
         let selected = try validate(settings)
-        if let apiKey, !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            try writeSecret(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
+        let submittedSecret = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !submittedSecret.isEmpty {
+            try writeSecret(submittedSecret)
+        } else if readSecretWithSystemTool(replacementKeychainService) == nil,
+                  let legacySecret = readLegacySecretForForegroundMigration() {
+            // The old item may require one foreground Keychain approval. Move
+            // it into the app-owned after-first-unlock slot while the operator
+            // is explicitly saving settings; later launches stay silent.
+            try writeSecret(legacySecret)
         }
         let directory = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/BudgetLoop", isDirectory: true)
@@ -100,6 +63,25 @@ enum NativeGatewaySettingsStore {
             "secret_configured": readSecret() != nil,
             "secret_store": "macos_keychain",
         ]) { _, new in new }
+    }
+
+    private static func readLegacySecretForForegroundMigration() -> String? {
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrAccount: NSUserName(),
+            kSecAttrService: keychainService,
+            kSecReturnData: true,
+            kSecMatchLimit: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let secret = String(data: data, encoding: .utf8),
+              !secret.isEmpty else {
+            return nil
+        }
+        return secret
     }
 
     private static func validate(_ settings: [String: Any]) throws -> [String: Any] {

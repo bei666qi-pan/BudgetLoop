@@ -184,6 +184,25 @@ describe("home conversational intake", () => {
     expect(apiFetchMock.mock.calls[0][0]).toBe("/api/task-drafts");
   });
 
+  it("blocks an out-of-contract role budget before the create request", async () => {
+    const user = userEvent.setup();
+    const invalid = draft();
+    invalid.team.preset = {
+      ...invalid.team.preset,
+      roles: invalid.team.preset.roles.map((role, index) => ({
+        ...role,
+        budget: { ...role.budget, max_total_tokens: index === 0 ? 99_999_990 : role.budget.max_total_tokens },
+      })),
+    };
+    apiFetchMock.mockResolvedValueOnce(invalid);
+    render(<HomeTaskIntake />);
+    await user.type(screen.getByLabelText("描述想完成的目标"), "修复订单并发超扣");
+    await user.click(screen.getByRole("button", { name: "生成建议配置" }));
+    expect(await screen.findByText(/单个角色 Token 上限为 200,000/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认并启动" })).toBeDisabled();
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("supports keyboard submission, announced readiness and bounded edits", async () => {
     const user = userEvent.setup();
     apiFetchMock.mockResolvedValueOnce(draft());

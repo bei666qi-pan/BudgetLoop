@@ -103,6 +103,8 @@ def test_prompt_excludes_permission_and_carries_only_editable_previous_state() -
     messages = build_ai_draft_messages("再加入无障碍要求", previous)
     assert "Never choose folders, permissions" in messages[0]["content"]
     assert "no chain of thought" in messages[0]["content"]
+    assert '"confidence":85' in messages[0]["content"]
+    assert "integer percentage from 1 through 100" in messages[0]["content"]
     payload = json.loads(messages[1]["content"])
     assert payload["previous_editable_draft"] == previous
     assert len(payload["trusted_presets"]) == 9

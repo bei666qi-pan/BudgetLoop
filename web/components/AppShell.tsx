@@ -4,17 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Plus, Settings2, UsersRound, Wifi, WifiOff } from "lucide-react";
+import { BudgetLoopBrandMark } from "@/components/brand/BudgetLoopBrandMark";
 import { checkHealth } from "@/lib/api";
-
-function BrandMark() {
-  return (
-    <span aria-hidden className="relative block h-8 w-10 text-accent">
-      <span className="absolute left-0 top-1 h-6 w-6 rounded-full border-[4px] border-current" />
-      <span className="absolute right-0 top-1 h-6 w-6 rounded-full border-[4px] border-current" />
-      <span className="absolute left-[17px] top-[13px] h-1.5 w-1.5 rounded-full bg-background" />
-    </span>
-  );
-}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -43,7 +34,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 border-b border-border bg-white/80 backdrop-blur-2xl">
         <div className="mx-auto flex h-[72px] max-w-[1536px] items-center gap-3 px-4 sm:gap-6 sm:px-8">
           <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="BudgetLoop 首页">
-            <BrandMark />
+            <BudgetLoopBrandMark className="h-9 w-9 shrink-0 text-accent" />
             <span className="text-lg font-semibold tracking-[-0.035em]">BudgetLoop</span>
           </Link>
           <nav aria-label="主要导航" className="hidden h-full items-center gap-1 sm:ml-4 sm:flex">

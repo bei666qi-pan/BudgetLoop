@@ -92,7 +92,7 @@ BudgetLoop 是多 Agent 控制平面，OpenHands、Codex、Gemini CLI 和 OpenCo
 
 源码通过 `scripts/fetch-agent-engines.sh` 下载到 `vendor/agent-engines/`。四个 checkout 采用 detached shallow revision；OpenHands sparse checkout 排除 `enterprise/`。本地 worker 固定安装官方 Codex/Gemini CLI 包；只有命令、短期能力继承（或独立凭据）、原生协议、sandbox 和生命周期检查全部通过才可选择，禁止静默回退。
 
-Codex 使用隔离的运行时 `config.toml` 连接 BudgetLoop Responses 代理；Gemini CLI 使用进程级 Gemini origin/model/capability。两者只看到 Run/Model scoped 短期凭据。BudgetLoop 在控制面校验 live Run、模型、请求大小与预算后转发给 New API，New API 承担协议转换和渠道路由。
+Codex 使用隔离的运行时 `config.toml` 连接 BudgetLoop Responses 代理，并沿用官方 Codex `bubblewrap` workspace-write 沙箱；本地 worker 仅放开 Docker 默认 seccomp 对 user namespace 的拦截，文件与进程权限仍由 Codex 自身的 bwrap/seccomp 策略约束（来源：`openai/codex` 的 `codex-rs/linux-sandbox/src/bwrap.rs`）。Gemini CLI 使用进程级 Gemini origin/model/capability，并通过官方 Docker sandbox 机制在本地固定 worker 镜像中重启执行，避免运行时依赖外部 Artifact Registry。两者只看到 Run/Model scoped 短期凭据。BudgetLoop 在控制面校验 live Run、模型、请求大小与预算后转发给 New API，New API 承担协议转换和渠道路由。
 
 ## 目录结构
 

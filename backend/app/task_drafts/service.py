@@ -75,9 +75,10 @@ def build_ai_draft_messages(
                 "no markdown and no chain of thought, using exactly: "
                 '{"title":"...","goal":"...","acceptance_criteria":"...",'
                 '"shared_context":"...","preset_id":"known-id","preset_version":1,'
-                '"confidence":1,"reason":"short Chinese reason",'
+                '"confidence":85,"reason":"short Chinese reason",'
                 '"matched_signals":["public Chinese signal"]}. '
-                "Keep all text concise, concrete and faithful to the operator message."
+                "confidence must be an integer percentage from 1 through 100. Keep all text "
+                "concise, concrete and faithful to the operator message."
             ),
         },
         {

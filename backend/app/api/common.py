@@ -1,4 +1,5 @@
 """路由共享的序列化与创建逻辑。"""
+
 from __future__ import annotations
 
 import uuid
@@ -38,13 +39,15 @@ def create_run(
     model_config: dict | None = None,
 ) -> TaskRun:
     """创建 TaskRun + TaskBudget + 六个 TaskPhase，并同事务发 run_started 事件。"""
-    deadline = utcnow() + timedelta(seconds=budget_fields["max_wall_time_seconds"])
+    config = model_config or {}
+    unlimited = config.get("budget_mode") == "max"
+    deadline = None if unlimited else utcnow() + timedelta(seconds=budget_fields["max_wall_time_seconds"])
     run = TaskRun(
         task_id=task.id,
         attempt_no=attempt_no,
         strategy=strategy.value,
         status=RunStatus.PENDING.value,
-        model_config=model_config or {},
+        model_config=config,
         deadline_at=deadline,
     )
     session.add(run)
@@ -53,7 +56,7 @@ def create_run(
     budget = TaskBudget(run_id=run.id, **budget_fields)
     session.add(budget)
 
-    weighted = strategy in (Strategy.FIXED, Strategy.DYNAMIC)
+    weighted = strategy in (Strategy.FIXED, Strategy.DYNAMIC) and not unlimited
     for phase in Phase:
         w = PHASE_WEIGHTS[phase] if weighted else 0.0
         session.add(
