@@ -225,8 +225,14 @@ class CLIEngineAdapter:
             return NormalizedEngineEvent(
                 kind, None, None, payload, session_id=str(session_id) if session_id else None
             )
-        if kind == "message" and payload.get("role") == "assistant" and not payload.get("delta"):
-            return NormalizedEngineEvent("message", str(payload.get("content") or "")[:2000], None, payload)
+        if kind == "message" and payload.get("role") == "assistant":
+            event_kind = "message_delta" if payload.get("delta") else "message"
+            return NormalizedEngineEvent(
+                event_kind,
+                str(payload.get("content") or "")[:2000],
+                None,
+                payload,
+            )
         if kind == "tool_use":
             return NormalizedEngineEvent(
                 "tool_start",

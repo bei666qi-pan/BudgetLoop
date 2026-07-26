@@ -101,6 +101,22 @@ def test_managed_runtime_satisfies_codex_and_gemini_authentication(monkeypatch) 
     assert "BudgetLoop 受管 AI" in engine_preflight("codex").reason
 
 
+def test_gemini_declared_sandbox_fails_closed_without_container_cli(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "enable_cli_engines", True)
+    monkeypatch.setattr(
+        "app.execution_engines.registry.shutil.which",
+        lambda command: "/usr/bin/gemini" if command == "gemini" else None,
+    )
+    monkeypatch.setattr(
+        "app.execution_engines.registry._managed_credentials_configured",
+        lambda engine_id: engine_id == "gemini-cli",
+    )
+    monkeypatch.setenv("BUDGETLOOP_GEMINI_CLI_SANDBOX_READY", "true")
+    status = engine_preflight("gemini-cli")
+    assert status.runtime_available is False
+    assert "sandbox" in status.reason
+
+
 def test_opencode_requires_explicit_outer_sandbox_or_host_opt_in(monkeypatch) -> None:
     monkeypatch.setattr(settings, "enable_cli_engines", True)
     monkeypatch.setattr("app.execution_engines.registry.shutil.which", lambda _command: "/usr/bin/opencode")

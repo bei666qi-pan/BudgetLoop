@@ -1,6 +1,74 @@
-# BudgetLoop —— 预算感知、自我修复 Coding Agent
+# BudgetLoop
 
-## 项目简介
+<p align="center">
+  <img src="./desktop/Resources/BudgetLoop.svg" width="132" alt="BudgetLoop logo">
+</p>
+
+> **A budget-aware coding agent that plans, executes, tests, self-corrects — and stops before your budget disappears.**
+>
+> **一个会规划、执行、测试、自我修复，并在预算失控前停下来的 Coding Agent。**
+
+[![License](https://img.shields.io/github/license/bei666qi-pan/BudgetLoop?style=flat-square)](./LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/bei666qi-pan/BudgetLoop?display_name=tag&style=flat-square)](https://github.com/bei666qi-pan/BudgetLoop/releases/latest)
+[![Windows launcher](https://github.com/bei666qi-pan/BudgetLoop/actions/workflows/windows-launcher.yml/badge.svg)](https://github.com/bei666qi-pan/BudgetLoop/actions/workflows/windows-launcher.yml)
+[![Built with Next.js](https://img.shields.io/badge/frontend-Next.js%2015-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+[![Built with FastAPI](https://img.shields.io/badge/control%20plane-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
+
+**Language:** English (this page) · [中文技术说明](#中文技术说明)
+
+BudgetLoop is a control plane for coding agents that turns an open-ended development request into an **auditable, resource-bounded feedback loop**. It runs real tools and tests, records what happened, changes course when evidence says it should, and gives the operator the final say.
+
+## Why BudgetLoop?
+
+| What you need | What BudgetLoop does |
+|---|---|
+| **A budget you can trust** | Atomically enforces token, call, cost, and time limits before each model call; settles against actual usage afterward. |
+| **Evidence, not agent theatre** | Executes tools and tests for real, then stores outputs, exit codes, timing, and artifacts. |
+| **Autonomy without a black box** | Agent Teams can work in guided or autonomous mode, run eligible stages in parallel, and create auditable handoffs. |
+| **A true unlimited option** | Choose **Max · Unlimited / 无上限** to remove automatic resource caps while keeping accounting visible; pause or cancel whenever you decide. |
+| **Recovery instead of blind retries** | Scores deterministic signals such as test results, compiler errors, diffs, and repeated actions to adapt, roll back, or minimize the fix. |
+| **Operator-controlled safety** | Docker-isolated workspaces, server-side credentials, and approval gates for risky commands, writes, and network access. |
+
+## Get running in minutes
+
+### Run locally with Docker
+
+```bash
+git clone https://github.com/bei666qi-pan/BudgetLoop.git
+cd BudgetLoop
+cp .env.example .env
+# Edit .env and replace every replace-with-* value.
+docker compose up -d
+```
+
+Open [http://localhost:3000](http://localhost:3000). For the initial New API gateway setup, see the [Chinese setup guide](#本地运行步骤) below.
+
+### Run as a desktop app
+
+- **Windows:** download the native MSI from [Release v0.2.0](https://github.com/bei666qi-pan/BudgetLoop/releases/tag/v0.2.0). It requires Docker Desktop, Microsoft Edge WebView2 Runtime, and a local BudgetLoop checkout containing `docker-compose.yml`.
+- **macOS:** build the launcher with `./desktop/build.sh`, then open `./BudgetLoop.app`. Docker Desktop and this repository are required.
+
+The launchers rebuild `control-plane`, `worker`, and `web` only; they preserve your `.env`, database services, and Docker volumes.
+
+## The loop, at a glance
+
+```text
+Describe a goal → plan the work → call models + tools → change code → run tests
+       ↑                                                        ↓
+       └───── inspect evidence ← score progress ← adapt / retry / roll back ───┘
+```
+
+Unlike a chat log with a token counter, BudgetLoop makes each run a bounded operational process: a task, its budget, execution events, approvals, test results, and final report are all first-class records.
+
+## Built for the Loop Engineering challenge
+
+BudgetLoop explores a practical question: can a coding agent keep moving toward a real acceptance condition while respecting a hard budget? Its answer is a closed-loop workflow with real execution feedback — not merely a model's claim that work is complete.
+
+---
+
+## 中文技术说明
+
+### 项目简介
 
 BudgetLoop 是一个面向代码开发任务的 **预算感知、自我修复 Coding Agent**。它能在 Token、时间、调用次数和费用预算内，围绕明确开发目标执行闭环工作流：
 
@@ -8,7 +76,7 @@ BudgetLoop 是一个面向代码开发任务的 **预算感知、自我修复 Co
 > 执行测试与验证 → 读取反馈与日志 → 判断有效进展 → 调整计划 / 重试 /
 > 切换策略 / 回滚 → 在预算内交付最终结果
 
-**核心创新不是"显示 Token 用了多少"，而是：**
+**核心创新不是“显示 Token 用了多少”，而是：**
 
 1. 对每一次真实大模型调用进行细粒度观测——Token/耗时/费用/有效性
 2. 对整个任务设置资源上限，并在后端**原子化**强制拦截
@@ -17,11 +85,7 @@ BudgetLoop 是一个面向代码开发任务的 **预算感知、自我修复 Co
 5. 在预算不足时**输出可解释的部分完成结果**而非无限循环或直接中断
 6. 新手友好的 UI 持续展示每一轮的计划、执行、反馈与修正
 
-## 对应赛题
-
-Loop Engineering 实践挑战 —— 构建真正闭环、预算可控、自我修复的 AI 编码代理。
-
-## 与普通 Coding Agent 的区别
+### 与普通 Coding Agent 的区别
 
 | 维度 | 普通 Coding Agent | BudgetLoop |
 |---|---|---|
@@ -33,7 +97,7 @@ Loop Engineering 实践挑战 —— 构建真正闭环、预算可控、自我�
 | 审批 | 无或全自动 | 危险命令/越界写/网络访问可配置人工确认，拒绝理由作为反馈重规划 |
 | 可观测性 | 扁平对话日志 | 逐次 LLM 调用、工具调用、事件时间线、预算燃尽图；OTel trace 可选 |
 
-## 系统架构
+## Architecture / 系统架构
 
 ```mermaid
 graph TD
@@ -50,7 +114,7 @@ graph TD
     WK --> VK[Valkey: 队列/心跳/短期缓存]
 ```
 
-## Loop 工作流程
+## Execution loop / Loop 工作流程
 
 ```mermaid
 sequenceDiagram
@@ -88,7 +152,7 @@ sequenceDiagram
     WK->>PG: 最终报告
 ```
 
-## 技术栈
+## Technology / 技术栈
 
 | 层 | 技术 |
 |---|---|
@@ -103,7 +167,7 @@ sequenceDiagram
 | 观测 | OpenTelemetry (可选) / Langfuse (可选) |
 | 部署 | Docker Compose 一键启动 |
 
-## 环境变量
+## Environment variables / 环境变量
 
 见 [.env.example](./.env.example)。核心配置：
 
@@ -112,7 +176,7 @@ sequenceDiagram
 - `AI_GATEWAY_RECOMMENDATION_MODEL`：推荐用途模型别名，默认 `budgetloop-recommendation`。
 - `AI_RECOMMENDATION_ENABLED`：AI 优先推荐开关；无 AI 或调用失败时自动使用本地推荐。
 
-## 本地运行步骤
+## Local setup / 本地运行步骤
 
 ```bash
 # 1. 配置环境变量
@@ -133,7 +197,7 @@ docker compose up -d control-plane worker
 open http://localhost:3000
 ```
 
-## 首页：一句话创建 Agent Team
+## Create an Agent Team from one sentence / 首页：一句话创建 Agent Team
 
 首页现在是默认的新手入口：直接描述希望完成的结果，BudgetLoop 会生成一份可编辑的建议配置，
 其中包括可信内置 Agent Team、角色分工、验收条件、执行引擎和硬预算。通常只需：
@@ -157,7 +221,7 @@ open http://localhost:3000
 最近任务、搜索、状态筛选和审批入口仍在首页下方。需要更细控制时，可使用“手动配置单个任务”、
 “浏览全部 Agent Team”或 `/containers/new`；这些高级路径不会把未确认草稿标记为已启动。
 
-## 开发启动脚本
+## Development setup / 开发启动脚本
 
 ```bash
 # 先启动基础服务
@@ -175,7 +239,7 @@ dramatiq app.worker.actors -p 1 -t 4 &
 cd web && npm install && npm run dev
 ```
 
-## AI 协作规范（OpenSpec）
+## AI collaboration workflow (OpenSpec) / AI 协作规范（OpenSpec）
 
 本仓库默认采用 OpenSpec 的规范驱动工作流：对于功能、行为、接口或架构变更，先产出并确认 proposal / design / specs / tasks，再实施、验证、同步与归档。规范的唯一事实来源在 [`openspec/`](./openspec/)，仓库级默认策略见 [`AGENTS.md`](./AGENTS.md)。
 
@@ -187,7 +251,7 @@ cd web && npm install && npm run dev
 
 更新 OpenSpec CLI 后，在仓库根目录执行 `openspec update` 即可重新生成全部客户端入口。
 
-## 可替换执行引擎
+## Swappable execution engines / 可替换执行引擎
 
 BudgetLoop **不重新实现通用 Agent Loop**，也不 fork 上游 UI。BudgetLoop 始终拥有
 TaskRun、预算、审批、Workspace、事件和 Handoff；引擎只执行有界工作：
@@ -201,9 +265,9 @@ TaskRun、预算、审批、Workspace、事件和 Handoff；引擎只执行有�
 - **独立凭据**：关闭继承时仍可使用 `BUDGETLOOP_<ENGINE>_ENV_*` 或显式 HOME；不会把普通宿主 Key 隐式复制给引擎。
 - **Fail closed**：官方命令、受管协议或独立凭据、sandbox 任一必需条件缺失时均不可启动，不会回退到 OpenHands。
 
-## AI API 网关与模型供应商配置
+## AI gateway and model providers / AI API 网关与模型供应商配置
 
-### 网页配置与本地安全存储
+### Web settings and local secret storage / 网页配置与本地安全存储
 
 本地启动后打开 `/settings/ai`，可配置网关类型、URL、默认/推荐模型、部署与网络
 标签、推理努力档位、思考 Token 上限及 API Key。产品不内置企业网关地址或模型
@@ -244,14 +308,14 @@ New API 控制台负责保存合法上游 Key、模型映射、配额与渠道�
 BudgetLoop 只引用稳定用途别名，例如 `budgetloop-recommendation`。不再增加一次
 “让 AI 选择 AI”的语义路由调用：它会增加费用、延迟和提示暴露，也会让预算决策难以审计。
 
-### AI 优先推荐与降级
+### AI-first recommendations and fallback / AI 优先推荐与降级
 
 Agent Team 推荐会优先通过网关调用配置的推荐模型。模型只能返回本地目录中的模板 ID，
 未知模板、重复项、坏 JSON、超限输出、超时、认证失败、限流或上游故障都会被拒绝，随后
 自动运行确定性的本地 LangGraph 匹配。API 与页面会明确显示 `ai` 或
 `local_fallback` 来源；本地降级不会阻塞团队创建。
 
-### LiteLLM 旧部署兼容
+### Legacy LiteLLM compatibility / LiteLLM 旧部署兼容
 
 LiteLLM 不再是新部署默认项，但原有配置继续保留：
 
@@ -267,7 +331,7 @@ docker compose --profile legacy-litellm up -d
 
 New API 与 LiteLLM 默认不会串联，避免重复重试、重复记账和不透明故障语义。
 
-## macOS 本地应用
+## macOS desktop app / macOS 本地应用
 
 BudgetLoop.app 是本仓库 Docker 服务栈的原生启动器：它需要与本仓库（含
 `docker-compose.yml`）放在一起，并依赖已安装的 Docker Desktop；它不是脱离项目目录
@@ -284,7 +348,7 @@ open ./BudgetLoop.app
 `BUDGETLOOP_CODESIGN_IDENTITY` 后重建。应用只从 macOS Keychain 读取网页设置保存的
 上游 Key，并仅通过子进程环境传给 compose，不会写回 `.env`、包内容或日志。
 
-## Windows 本地应用
+## Windows desktop app / Windows 本地应用
 
 Windows 版是同一 Docker Compose 本地栈的原生启动器：它不包含 Docker Desktop、模型、
 项目源码或任何 API Key。安装 MSI 后首次打开时选择一个包含 `docker-compose.yml` 的
@@ -292,12 +356,12 @@ BudgetLoop 仓库，或预先设置 `BUDGETLOOP_REPO` 到该目录。启动器�
 会执行 `docker compose up -d --build control-plane worker web`，保留 `.env`、数据库、
 Valkey、New API 和所有数据卷，并在本机健康检查通过后打开 UI。
 
-Windows 需要已启动的 Docker Desktop 和 Microsoft Edge WebView2 Runtime。仓库的
-`Windows launcher` GitHub Actions 工作流会在 `windows-latest` 运行 Rust 测试、构建 MSI
-并把安装包作为工作流工件保存；由于托管 Runner 没有 Docker Desktop Linux 引擎，完整的
-Docker 启动验收仍需在真实 Windows 设备执行。该限制会在发布前如实报告。
+从 [GitHub Release v0.2.0](https://github.com/bei666qi-pan/BudgetLoop/releases/tag/v0.2.0)
+下载 Windows MSI。Windows 需要已启动的 Docker Desktop 和 Microsoft Edge WebView2 Runtime。
+仓库的 `Windows launcher` GitHub Actions 工作流会在 `windows-latest` 运行 Rust 测试并构建 MSI；
+该版本也已在真实 Windows 环境完成 Docker 启动验收。
 
-## Demo 操作步骤
+## Demo / Demo 操作步骤
 
 详见 [docs/demo-guide.md](./docs/demo-guide.md)。
 
@@ -309,7 +373,7 @@ bash scripts/demo.sh
 bash scripts/demo-low-budget.sh
 ```
 
-## 测试命令
+## Test commands / 测试命令
 
 ```bash
 # 后端纯单元测试（无需 Docker）
@@ -322,7 +386,7 @@ cd backend && .venv/bin/pytest tests/ -q
 cd web && npm run build
 ```
 
-## 安全边界
+## Security boundaries / 安全边界
 
 - 所有文件工具限制在指定工作目录，路径穿越由 realpath 校验拦截
 - Shell 命令超时控制 + 危险命令正则拦截（rm -rf、sudo、git push、DROP TABLE 等）
@@ -332,20 +396,20 @@ cd web && npm run build
 - AI 推荐只发送用户主动填写的目标与偏好，不发送私有 Session、Handoff 或隐藏推理
 - 审批闸门可配置：高风险操作需要人工确认
 
-## 已知限制
+## Known limitations / 已知限制
 
 - 单 worker 进程，不水平扩展（Dramatiq broker 支持多 worker，但预算预留依赖 PG 行锁已天然防竞态）
 - Workspace 容器依赖 docker socket，生产环境应换 rootless Docker / 远程 Docker
 - OpenCode 没有内置进程 sandbox，必须配置外层 sandbox 命令；显式允许宿主执行仅适合受控开发环境
 - New API 的渠道和 Token 配额属于网关事实；BudgetLoop 的 TaskRun 预算、审批与状态仍由 PostgreSQL 控制面掌握
 
-## 下一步最值得完善的三项
+## Next priorities / 下一步最值得完善的三项
 
 1. 为 New API 创建每 Run 受限 Token 的管理 API 集成，进一步收紧不可见内部调用
 2. 评测脚本 (`scripts/evaluate.py`) 连接真实 API 跑通 A/B/C 三组对照并产出量化结论
 3. 前端燃尽图替换为真实数据驱动的轻量 SVG（当前 UI 组件已预留接口）
 
-## 开源许可证
+## License / 开源许可证
 
 BudgetLoop 本身采用 MIT License。依赖的第三方组件包括 OpenHands (MIT)、New API
 (AGPL-3.0，独立 HTTP 服务)、LiteLLM (MIT，兼容 profile)、FastAPI (MIT)、Dramatiq

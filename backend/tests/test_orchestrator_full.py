@@ -1355,6 +1355,19 @@ class TestEnsureConversation:
         assert call_kwargs["llm_api_key"] == ""
         assert orch._managed_runtime_accounting is False
 
+    def test_managed_cli_uses_proxy_budget_accounting(self):
+        session = MagicMock()
+        client = MagicMock()
+        client.transport = "cli"
+        orch = _make_orch(mock_session=session, client=client)
+        handle = MagicMock(working_dir="/ws", runtime_env={"BUDGETLOOP_AI_MANAGED": "1"})
+
+        orch._ensure_conversation(
+            _make_run(conversation_id=None), _make_task(), Strategy.DYNAMIC, {}, handle
+        )
+
+        assert orch._managed_runtime_accounting is True
+
 
 # ---------------------------------------------------------------------------
 # 27. _approval_gate

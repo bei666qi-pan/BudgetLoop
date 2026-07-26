@@ -1,4 +1,4 @@
-import { roleBoundsValid, roleDrafts } from "@/lib/team-presets";
+import { roleBoundsValid, roleBudgetValid, roleDrafts, roleOverride } from "@/lib/team-presets";
 import type {
   CreateTeamFromPresetRequest,
   EditableTaskDraft,
@@ -62,6 +62,9 @@ export function teamDraftError(
   if (roles.some((role) => role.enabled && (!role.role.trim() || !role.goal.trim()))) {
     return "已启用角色需要名称和明确目标。";
   }
+  if (roles.some((role) => role.enabled && !roleBudgetValid(role.budget))) {
+    return "角色预算超出安全范围；单个角色 Token 上限为 200,000。";
+  }
   const available = new Set(
     draft.execution.engines
       .filter((engine) => engine.runtime_available)
@@ -90,14 +93,7 @@ export function createTeamRequestFromDraft(
       access.folder_access === "full_access"
         ? "worktree"
         : draft.execution.default_workspace_policy,
-    role_overrides: roles.map((role) => ({
-      key: role.key,
-      enabled: role.enabled,
-      role: role.role.trim(),
-      goal: role.goal.trim(),
-      budget: { ...role.budget },
-      execution_engine: role.execution_engine,
-    })),
+    role_overrides: roles.map(roleOverride),
     start_immediately: true,
     default_execution_engine: draft.execution.default_engine,
     folder_access: access.folder_access,

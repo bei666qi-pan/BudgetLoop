@@ -54,6 +54,7 @@ class CLIEngineClient:
         self._usages: list[dict[str, Any]] = []
         self._latencies: list[float] = []
         self._execution_status = "idle"
+        self._last_public_error: str | None = None
         self._has_run = False
         self._state_dir = Path(self.working_dir) / ".budgetloop"
         self._state_file = self._state_dir / f"{self.engine.id}-session.json"
@@ -111,6 +112,7 @@ class CLIEngineClient:
             is_resume=self._has_run and bool(self.native_session_id),
         )
         self._execution_status = "running"
+        self._last_public_error = None
         self._started_at = time.monotonic()
         environment = engine_environment(self.engine.id, runtime_env=self.runtime_env)
         sandbox = environment.pop("BUDGETLOOP_ENGINE_SANDBOX_COMMAND", None)
@@ -141,10 +143,10 @@ class CLIEngineClient:
         self._process = None
         self._has_run = True
         self._latencies.append(latency)
-        self._parse_output(stdout, stderr)
+        self._parse_output(stdout, stderr, failed=returncode != 0)
         if returncode != 0:
             self._execution_status = "error"
-            reason = stderr.strip() or stdout.strip() or f"exit {returncode}"
+            reason = self._last_public_error or stderr.strip() or stdout.strip() or f"exit {returncode}"
             raise CLIEngineError(f"{self.engine.name} failed: {reason[:1000]}")
         self._execution_status = "finished"
         self._save_state()
@@ -229,8 +231,9 @@ class CLIEngineClient:
         finally:
             self._process = None
 
-    def _parse_output(self, stdout: str, stderr: str) -> None:
+    def _parse_output(self, stdout: str, stderr: str, *, failed: bool) -> None:
         pending_tools: dict[str, NormalizedEngineEvent] = {}
+        message_deltas: list[str] = []
         for line in stdout.splitlines():
             normalized = self.adapter.normalize_json_line(line)
             if normalized is None:
@@ -253,10 +256,16 @@ class CLIEngineClient:
             elif normalized.kind == "tool":
                 self._append_action(normalized)
                 self._append_observation(normalized)
+            elif normalized.kind == "message_delta" and normalized.public_text:
+                message_deltas.append(normalized.public_text)
             elif normalized.kind in {"message", "error", "diagnostic"} and normalized.public_text:
                 self._append_message(normalized.public_text)
+            if normalized.kind in {"error", "result"} and normalized.public_text:
+                self._last_public_error = normalized.public_text
+        if message_deltas:
+            self._append_message("".join(message_deltas)[:8000])
         diagnostic = stderr.strip()
-        if diagnostic:
+        if diagnostic and failed:
             self._append_message(f"[{self.engine.name}] {diagnostic[:2000]}")
 
     def _append_action(self, event: NormalizedEngineEvent) -> None:
@@ -384,6 +393,9 @@ def engine_environment(
         environment["CODEX_HOME"] = str(home)
     elif engine_id == "gemini-cli":
         environment["GEMINI_CLI_HOME"] = str(home)
+        sandbox_image = os.environ.get("GEMINI_SANDBOX_IMAGE")
+        if sandbox_image:
+            environment["GEMINI_SANDBOX_IMAGE"] = sandbox_image
     elif engine_id == "opencode":
         environment["XDG_CONFIG_HOME"] = str(home / "config")
         environment["XDG_DATA_HOME"] = str(home / "data")
@@ -404,10 +416,24 @@ def engine_environment(
                     environment[name] = value
             _write_managed_codex_config(home, environment)
         elif engine_id == "gemini-cli":
-            for name in ("GOOGLE_GEMINI_BASE_URL", "GEMINI_API_KEY", "GEMINI_MODEL"):
+            for name in (
+                "GEMINI_API_KEY",
+                "GEMINI_API_KEY_AUTH_MECHANISM",
+                "GEMINI_MODEL",
+            ):
                 value = (runtime_env or {}).get(name)
                 if value:
                     environment[name] = value
+            gemini_base_url = (runtime_env or {}).get(
+                "BUDGETLOOP_AI_CONTAINER_GEMINI_BASE_URL"
+            ) or (runtime_env or {}).get("GOOGLE_GEMINI_BASE_URL")
+            if gemini_base_url:
+                environment["GOOGLE_GEMINI_BASE_URL"] = gemini_base_url
+            # Gemini CLI 0.52 forwards only an allowlist into its Docker
+            # sandbox. Its documented SANDBOX_ENV hook is therefore required
+            # to preserve BudgetLoop's bearer auth mechanism after relaunch.
+            environment["SANDBOX_ENV"] = "GEMINI_API_KEY_AUTH_MECHANISM=bearer"
+            _write_managed_gemini_config(home)
     return environment
 
 
@@ -432,5 +458,22 @@ def _write_managed_codex_config(home: Path, environment: dict[str, str]) -> None
     path = home / "config.toml"
     temporary = home / ".config.toml.tmp"
     temporary.write_text(config, encoding="utf-8")
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def _write_managed_gemini_config(home: Path) -> None:
+    """Select Gemini API-key auth without persisting the run capability."""
+    config_dir = home / ".gemini"
+    config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = config_dir / "settings.json"
+    temporary = config_dir / ".settings.json.tmp"
+    temporary.write_text(
+        json.dumps(
+            {"security": {"auth": {"selectedType": "gemini-api-key"}}},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     temporary.chmod(0o600)
     temporary.replace(path)

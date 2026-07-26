@@ -212,11 +212,14 @@ def _engine_sandbox_configured(engine_id: str) -> bool:
     if os.environ.get(f"BUDGETLOOP_{key}_SANDBOX_COMMAND"):
         return True
     if engine_id == "gemini-cli":
-        return os.environ.get("BUDGETLOOP_GEMINI_CLI_SANDBOX_READY", "").lower() in {
+        declared_ready = os.environ.get(
+            "BUDGETLOOP_GEMINI_CLI_SANDBOX_READY", ""
+        ).lower() in {
             "1",
             "true",
             "yes",
         }
+        return declared_ready and bool(shutil.which("docker") or shutil.which("podman"))
     return os.environ.get("BUDGETLOOP_OPENCODE_ALLOW_HOST_EXECUTION", "").lower() in {
         "1",
         "true",

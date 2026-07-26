@@ -3,9 +3,7 @@
 ## Purpose
 
 Define the persistent product shell and actionable task workspace used throughout the operator lifecycle.
-
 ## Requirements
-
 ### Requirement: Persistent operator shell
 The frontend SHALL present a consistent product shell across the task dashboard, task creation, Agent Team containers, run monitoring, and report routes with BudgetLoop identity, route-aware navigation, API health communication, and one visible context-appropriate primary action.
 
@@ -109,3 +107,48 @@ The home page SHALL keep actionable existing work visible while a new setup draf
 #### Scenario: Existing run needs attention
 - **WHEN** a returned task has a waiting-approval, failed, or other attention status
 - **THEN** the recent-work region exposes its status and direct continuation action even when a new draft is present
+
+### Requirement: Beginner-first inherited AI runtime
+The operator workspace SHALL explain that AI applications created by BudgetLoop automatically use the configured managed gateway through a scoped server-side runtime and do not require a second project API key or secret-bearing `.env` file.
+
+#### Scenario: Operator creates an AI application
+- **WHEN** a project goal describes an AI game, writing assistant or other AI-powered application
+- **THEN** the interface explains that server-side generated code will inherit BudgetLoop AI access automatically while browser code will use the generated application's server route
+
+#### Scenario: Managed gateway is unavailable
+- **WHEN** the configured gateway or aTrust route is unavailable
+- **THEN** the interface shows a non-secret actionable readiness state and does not claim that the generated AI application can make remote model calls
+
+#### Scenario: Operator inspects credential behavior
+- **WHEN** the operator reviews the team or runtime configuration
+- **THEN** the interface states that the upstream key stays in BudgetLoop or the OS secret store and is not copied into the generated repository
+
+#### Scenario: Operator changes inherited runtime policy
+- **WHEN** the operator opens authenticated AI settings
+- **THEN** the interface exposes a default-on managed-app inheritance switch and accurately previews the effect of disabling it without revealing the saved upstream key
+
+### Requirement: Progressive conversational review hierarchy
+The operator workspace SHALL keep goal, team, engine, folder access, and the primary confirmation action visible while placing implementation-oriented recommendation, topology, role-budget, gateway, and audit detail behind progressive disclosure.
+
+#### Scenario: Beginner reviews a successful AI draft
+- **WHEN** a valid AI-backed draft is ready
+- **THEN** the review presents a concise ready state and primary next action without a prominent gateway or implementation-detail card
+
+#### Scenario: Local fallback produces a usable draft
+- **WHEN** AI genuinely fails and local recommendation produces a valid draft
+- **THEN** the review shows a compact neutral provenance status with optional sanitized detail and does not visually treat the draft as an error
+
+#### Scenario: Operator needs advanced detail
+- **WHEN** the operator expands advanced configuration or provenance
+- **THEN** role, budget, engine-readiness, approval, permission, and recommendation facts remain inspectable and editable within existing enforcement bounds
+
+### Requirement: Recent-history deletion interaction
+The recent-work region SHALL expose a secondary delete action for eligible terminal standalone tasks, require a task-specific confirmation, and preserve the row with error feedback until deletion succeeds.
+
+#### Scenario: Operator confirms task deletion
+- **WHEN** an eligible task's delete action is activated and the named confirmation is accepted
+- **THEN** the interface waits for the API result and removes only that task row after success
+
+#### Scenario: Task cannot be deleted
+- **WHEN** the API rejects deletion because the task is active or team-owned
+- **THEN** the row remains present and the interface explains the lifecycle or ownership restriction without exposing backend internals

@@ -105,6 +105,9 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET:-budgetloop-artifacts}
       ENABLE_CLI_ENGINES: ${ENABLE_CLI_ENGINES:-true}
       BUDGETLOOP_GEMINI_CLI_SANDBOX_READY: ${BUDGETLOOP_GEMINI_CLI_SANDBOX_READY:-true}
+      # Gemini 官方 Docker sandbox 支持本地自定义镜像。复用同一固定 worker
+      # 镜像可避免运行时访问外部 Artifact Registry，同时保留真实容器隔离。
+      GEMINI_SANDBOX_IMAGE: ${GEMINI_SANDBOX_IMAGE:-budgetloop-worker:latest}
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,*.local},new-api,postgres,valkey,control-plane,worker
       no_proxy: ${no_proxy:-localhost,127.0.0.1,::1,host.docker.internal,*.local},new-api,postgres,valkey,control-plane,worker
     volumes:
@@ -123,6 +126,11 @@ services:
     build:
       context: ./backend
     command: dramatiq app.worker.actors -p 1 -t 4
+    # Official Codex Linux sandbox uses bubblewrap user namespaces. Docker's
+    # default seccomp profile blocks clone/unshare; keep Codex's own bwrap +
+    # seccomp policy authoritative instead of disabling its workspace sandbox.
+    security_opt:
+      - seccomp=unconfined
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/budgetloop
       REDIS_URL: redis://valkey:6379/0
@@ -145,8 +153,13 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       AGENT_SERVER_IMAGE: ${AGENT_SERVER_IMAGE}
       WORKSPACE_PUBLISHED_HOST: ${WORKSPACE_PUBLISHED_HOST:-host.docker.internal}
+      # Gemini 的 sibling Docker sandbox 必须把宿主可见的同一路径作为 cwd
+      # 挂载；启动器会按实际 repoRoot 动态注入此绝对路径。
+      CLI_WORKSPACE_ROOT: ${CLI_WORKSPACE_ROOT:-${PWD}/.budgetloop/workspaces/cli}
+      CLI_ENGINE_STATE_ROOT: ${CLI_ENGINE_STATE_ROOT:-${PWD}/.budgetloop/engine-state}
       ENABLE_CLI_ENGINES: ${ENABLE_CLI_ENGINES:-true}
       BUDGETLOOP_GEMINI_CLI_SANDBOX_READY: ${BUDGETLOOP_GEMINI_CLI_SANDBOX_READY:-true}
+      GEMINI_SANDBOX_IMAGE: ${GEMINI_SANDBOX_IMAGE:-budgetloop-worker:latest}
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,*.local},new-api,postgres,valkey,control-plane,worker
       no_proxy: ${no_proxy:-localhost,127.0.0.1,::1,host.docker.internal,*.local},new-api,postgres,valkey,control-plane,worker
       ARTIFACT_BACKEND: ${ARTIFACT_BACKEND:-local}
@@ -160,6 +173,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - artifacts:/data/artifacts
       - ./demo:/demo:ro
+      - ${CLI_WORKSPACE_ROOT:-${PWD}/.budgetloop/workspaces/cli}:${CLI_WORKSPACE_ROOT:-${PWD}/.budgetloop/workspaces/cli}
+      - ${CLI_ENGINE_STATE_ROOT:-${PWD}/.budgetloop/engine-state}:${CLI_ENGINE_STATE_ROOT:-${PWD}/.budgetloop/engine-state}
     depends_on:
       postgres:
         condition: service_healthy

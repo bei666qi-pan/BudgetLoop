@@ -3,9 +3,7 @@
 ## Purpose
 
 Define the live run supervision hierarchy, pressure-aware budget presentation, diagnostics, approvals, and resilient updates.
-
 ## Requirements
-
 ### Requirement: Run state hierarchy
 The run route SHALL prioritize run status, current phase/activity, task identity, owning work container/session when present, elapsed or completion context, and the most useful next action ahead of secondary diagnostics.
 
@@ -63,3 +61,14 @@ The run route SHALL distinguish initial loading, live streaming or refresh, conn
 #### Scenario: Live connection is disrupted
 - **WHEN** the event connection cannot deliver new data
 - **THEN** the existing known run data remains visible and the operator receives a clear connection/retry indication
+
+### Requirement: Folder access mode visibility
+The run command center SHALL display the run's folder permission mode and, when present, its project folder, so the operator can tell at a glance whether the agent is isolated from or writing directly into a host folder. A full-access run SHALL be marked distinctly from an isolated run.
+
+#### Scenario: Full-access run is open
+- **WHEN** a run recorded with `full_access` and a project folder is loaded
+- **THEN** the run detail shows the 完全访问模式 indicator and the folder path
+
+#### Scenario: Isolated run is open
+- **WHEN** a run without full access is loaded
+- **THEN** the run detail shows the isolated mode and no host folder is implied as writable

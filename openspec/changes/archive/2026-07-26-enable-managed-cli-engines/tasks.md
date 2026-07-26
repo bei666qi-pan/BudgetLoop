@@ -21,8 +21,8 @@
 
 ## 4. Verification and delivery
 
-- [ ] 4.1 Run focused and full backend tests, Ruff, frontend tests and the Next.js production build.
-- [ ] 4.2 Rebuild the control-plane/worker/web images while preserving the live local gateway environment and verify redacted health/readiness APIs.
-- [ ] 4.3 Run bounded real Codex and Gemini CLI smoke tasks through the Sangfor DeepSeek managed runtime and verify budget, transcript, workspace and secret boundaries.
-- [ ] 4.4 Recheck desktop/mobile engine selection in the browser, then rebuild/sign the macOS app and refresh the Desktop shortcut.
-- [ ] 4.5 Strict-validate this OpenSpec change and complete the full-objective evidence audit.
+- [x] 4.1 Run focused and full backend tests, Ruff, frontend tests and the Next.js production build.
+- [x] 4.2 Rebuild the control-plane/worker/web images while preserving the live local gateway environment and verify redacted health/readiness APIs.
+- [x] 4.3 Run bounded real Codex and Gemini CLI smoke tasks through the Sangfor DeepSeek managed runtime and verify budget, transcript, workspace and secret boundaries.
+- [x] 4.4 Recheck desktop/mobile engine selection in the browser, then rebuild/sign the macOS app and refresh the Desktop shortcut.
+- [x] 4.5 Strict-validate this OpenSpec change and complete the full-objective evidence audit.

@@ -314,7 +314,11 @@ def test_runtime_environment_is_default_on_and_disableable() -> None:
     assert environment["OPENAI_BASE_URL"].endswith("/api/runtime/ai/v1")
     assert environment["OPENAI_MODEL"] == "app-model"
     assert environment["GOOGLE_GEMINI_BASE_URL"].endswith("/api/runtime/ai")
+    assert environment["BUDGETLOOP_AI_CONTAINER_GEMINI_BASE_URL"].startswith(
+        "http://host.docker.internal"
+    )
     assert environment["GEMINI_MODEL"] == "app-model"
+    assert environment["GEMINI_API_KEY_AUTH_MECHANISM"] == "bearer"
     assert environment["GEMINI_API_KEY"] == environment["OPENAI_API_KEY"]
     assert "upstream-secret" not in json.dumps(environment)
     disabled = managed_runtime_environment(
