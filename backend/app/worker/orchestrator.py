@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.budget.manager import BudgetRejected, BudgetSnapshot, TaskBudgetManager
+from app.collaboration.autonomous import release_autonomous_stages
 from app.collaboration.service import (
     delivery_event_payload,
     format_agent_inbox,
@@ -203,7 +204,12 @@ def build_initial_message(
 ) -> str:
     """首个 initial_message：任务描述 + 验收标准 + 当前阶段 + 剩余预算 + 压力模式提示。"""
     mode = PressureMode(pressure_mode)
-    if snapshot is not None:
+    if snapshot is not None and snapshot.unlimited:
+        budget_line = (
+            "Max 模式：不设自动 tokens、calls、cost、wall time 或 active runtime 上限；"
+            "仍须记录实际用量并在验收完成后收尾。"
+        )
+    elif snapshot is not None:
         budget_line = (
             f"剩余预算：tokens={snapshot.remaining_tokens}/{snapshot.max_total_tokens}, "
             f"calls={snapshot.remaining_calls}/{snapshot.max_llm_calls}, "
@@ -226,6 +232,16 @@ def build_initial_message(
         f"{mode.value}: {PRESSURE_HINTS[mode]}\n\n"
         "# 生成 AI 应用的密钥边界\n"
         f"{MANAGED_AI_APP_GUIDANCE}\n"
+    )
+
+
+def build_autonomous_team_guidance() -> str:
+    """Trusted autonomy contract; it grants no additional permissions or context."""
+    return (
+        "# 自主 Agent Team 协作\n"
+        "基于项目目标和你的角色，先自行形成聚焦的子任务计划，再在分配的 workspace 内独立推进。"
+        "只陈述可验证的事实、改动和未解决风险，供后续 Handoff 使用；不要请求或假设其他 Session 的私有上下文。"
+        "达到验收证据后主动收尾。权限、审批、工作区边界和最终状态仍由 BudgetLoop 控制。"
     )
 
 
@@ -397,9 +413,7 @@ class Orchestrator:
             project_upload_id = model_config.get("project_upload_id")
             if project_upload_id:
                 if model_config.get("folder_access", "isolated") != "isolated" or source_dir:
-                    raise WorkspaceError(
-                        "project upload snapshots are only valid for isolated workspaces"
-                    )
+                    raise WorkspaceError("project upload snapshots are only valid for isolated workspaces")
                 try:
                     source_dir = resolve_project_upload(str(project_upload_id))
                 except ProjectUploadError as exc:
@@ -409,9 +423,7 @@ class Orchestrator:
                 and model_config.get("folder_access") == "full_access"
                 and not owner.worktree_enabled
             ):
-                raise WorkspaceError(
-                    "full_access Agent Team sessions require a server-generated worktree"
-                )
+                raise WorkspaceError("full_access Agent Team sessions require a server-generated worktree")
             if source_dir is None and engine_adapter.engine.transport == "cli":
                 source_dir = getattr(task, "workdir", None)
             handle = self.workspace_manager.provision(
@@ -444,9 +456,7 @@ class Orchestrator:
         if not isinstance(runtime_env, dict):
             runtime_env = {}
         server_transport = getattr(self.client, "transport", "server") != "cli"
-        self._managed_runtime_accounting = (
-            server_transport and runtime_env.get("BUDGETLOOP_AI_MANAGED") == "1"
-        )
+        self._managed_runtime_accounting = runtime_env.get("BUDGETLOOP_AI_MANAGED") == "1"
         if run.conversation_id:
             # 崩溃恢复：复用已有 conversation
             if getattr(self.client, "transport", "server") == "cli":
@@ -470,6 +480,8 @@ class Orchestrator:
             snapshot=snapshot,
             pressure_mode=PressureMode(run.pressure_mode or PressureMode.NORMAL.value),
         )
+        if model_config.get("team_mode") == "autonomous":
+            initial_message = f"{initial_message}\n{build_autonomous_team_guidance()}\n"
         conversation_model = model_config.get("model")
         llm_base_url = ""
         llm_api_key = ""
@@ -506,14 +518,17 @@ class Orchestrator:
     def _loop(
         self, run: TaskRun, task: Task, strategy: Strategy, model_config: dict, working_dir: str
     ) -> RunStatus:
-        max_iterations = int(model_config.get("max_loop_iterations", DEFAULT_MAX_LOOP_ITERATIONS))
+        unlimited = model_config.get("budget_mode") == "max"
+        max_iterations = (
+            None if unlimited else int(model_config.get("max_loop_iterations", DEFAULT_MAX_LOOP_ITERATIONS))
+        )
         est_tokens = int(model_config.get("per_call_est_tokens", DEFAULT_EST_TOKENS))
         est_cost = float(model_config.get("per_call_est_cost", DEFAULT_EST_COST))
         budget = self._budget(run)
 
         while True:
             iteration = int(run.iteration or 0) + 1
-            if iteration > max_iterations:
+            if max_iterations is not None and iteration > max_iterations:
                 return self.transition(run, RunStatus.PARTIAL_COMPLETED)
             if self.heartbeat:
                 self.heartbeat(self.run_id)
@@ -555,15 +570,11 @@ class Orchestrator:
                 self._send_iteration_message(run, instruction, inbox)
                 info = self.client.wait_until_idle(
                     timeout_seconds=self.step_timeout_seconds,
-                    require_execution_start=(
-                        getattr(self.client, "transport", "server") != "cli"
-                    ),
+                    require_execution_start=(getattr(self.client, "transport", "server") != "cli"),
                 )
                 conv_status = str(info.get("execution_status", "idle"))
                 if conv_status in FAILED_EXECUTION_STATUSES:
-                    raise AgentServerError(
-                        f"agent-server execution ended with status {conv_status!r}"
-                    )
+                    raise AgentServerError(f"agent-server execution ended with status {conv_status!r}")
             except Exception:
                 if strategy != Strategy.NONE:
                     budget.release(est_tokens, est_cost)
@@ -621,8 +632,9 @@ class Orchestrator:
             # g3. 策略切换（仅 dynamic 做动态调整）
             if strategy == Strategy.DYNAMIC:
                 self._strategy_step(run, iteration, working_dir)
-                self._pressure_step(run, budget)
-                self._phase_budget_step(run, iteration, budget)
+                if not unlimited:
+                    self._pressure_step(run, budget)
+                    self._phase_budget_step(run, iteration, budget)
 
             # h. checkpoint：git commit + checkpoints 表
             self._checkpoint(run, iteration, working_dir)
@@ -1257,6 +1269,22 @@ class Orchestrator:
             },
         )
         self._commit()
+        if status == RunStatus.COMPLETED:
+            released = release_autonomous_stages(self.session, run)
+            self._commit()
+            if released:
+                from app.worker import broker
+
+                for run_id in released:
+                    try:
+                        broker.enqueue_run(str(run_id))
+                    except Exception:  # noqa: BLE001 - recovery can retry the team start endpoint
+                        self.emit_event(
+                            run,
+                            EventType.WARNING,
+                            {"reason": f"autonomous release enqueue failed: {run_id}"},
+                        )
+                self._commit()
         self._destroy_workspace()
 
     def _fail(self, run: TaskRun, exc: Exception) -> None:

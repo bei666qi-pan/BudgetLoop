@@ -284,6 +284,19 @@ open ./BudgetLoop.app
 `BUDGETLOOP_CODESIGN_IDENTITY` 后重建。应用只从 macOS Keychain 读取网页设置保存的
 上游 Key，并仅通过子进程环境传给 compose，不会写回 `.env`、包内容或日志。
 
+## Windows 本地应用
+
+Windows 版是同一 Docker Compose 本地栈的原生启动器：它不包含 Docker Desktop、模型、
+项目源码或任何 API Key。安装 MSI 后首次打开时选择一个包含 `docker-compose.yml` 的
+BudgetLoop 仓库，或预先设置 `BUDGETLOOP_REPO` 到该目录。启动器只缓存该仓库路径，随后
+会执行 `docker compose up -d --build control-plane worker web`，保留 `.env`、数据库、
+Valkey、New API 和所有数据卷，并在本机健康检查通过后打开 UI。
+
+Windows 需要已启动的 Docker Desktop 和 Microsoft Edge WebView2 Runtime。仓库的
+`Windows launcher` GitHub Actions 工作流会在 `windows-latest` 运行 Rust 测试、构建 MSI
+并把安装包作为工作流工件保存；由于托管 Runner 没有 Docker Desktop Linux 引擎，完整的
+Docker 启动验收仍需在真实 Windows 设备执行。该限制会在发布前如实报告。
+
 ## Demo 操作步骤
 
 详见 [docs/demo-guide.md](./docs/demo-guide.md)。

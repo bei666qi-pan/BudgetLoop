@@ -13,10 +13,11 @@ interface PresetRoleListProps {
   preset: TeamPreset;
   roles: TeamRoleDraft[];
   engines: RoleEngineOption[];
+  budgetMode?: "bounded" | "max";
   onChange: (roles: TeamRoleDraft[]) => void;
 }
 
-export function PresetRoleList({ preset, roles, engines, onChange }: PresetRoleListProps) {
+export function PresetRoleList({ preset, roles, engines, budgetMode = "bounded", onChange }: PresetRoleListProps) {
   function update(key: string, patch: Partial<TeamRoleDraft>) {
     onChange(roles.map((role) => role.key === key ? { ...role, ...patch } : role));
   }
@@ -34,7 +35,7 @@ export function PresetRoleList({ preset, roles, engines, onChange }: PresetRoleL
               <ChevronDown className="mt-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
             </summary>
             <div className="border-t border-border/70 bg-muted/20 px-5 py-5 sm:px-7">
-              <div className="grid gap-4 sm:grid-cols-3"><label><span className="field-label">角色名称</span><input value={role.role} disabled={!role.enabled} maxLength={120} onChange={(event) => update(role.key, { role: event.target.value })} className="input-base mt-2 w-full" /></label><label><span className="field-label">执行引擎</span><select value={role.execution_engine} disabled={!role.enabled} onChange={(event) => update(role.key, { execution_engine: event.target.value })} className="input-base mt-2 w-full">{engines.map((engine) => <option key={engine.id} value={engine.id}>{engine.name}{engine.runtime_available ? "" : "（待启用）"}</option>)}</select></label><label><span className="field-label">启动 Token 上限</span><input type="number" min={1} max={200000} value={role.budget.max_total_tokens} disabled={!role.enabled} onChange={(event) => update(role.key, { budget: { ...role.budget, max_total_tokens: Number(event.target.value) } })} className="input-base mt-2 w-full tabular-nums" /></label></div>
+              <div className="grid gap-4 sm:grid-cols-3"><label><span className="field-label">角色名称</span><input value={role.role} disabled={!role.enabled} maxLength={120} onChange={(event) => update(role.key, { role: event.target.value })} className="input-base mt-2 w-full" /></label><label><span className="field-label">执行引擎</span><select value={role.execution_engine} disabled={!role.enabled} onChange={(event) => update(role.key, { execution_engine: event.target.value })} className="input-base mt-2 w-full">{engines.map((engine) => <option key={engine.id} value={engine.id}>{engine.name}{engine.runtime_available ? "" : "（待启用）"}</option>)}</select></label><label><span className="field-label">{budgetMode === "max" ? "起始 Token 估算（Max 不限额）" : "启动 Token 上限"}</span><input type="number" min={1} max={200000} value={role.budget.max_total_tokens} disabled={!role.enabled} onChange={(event) => update(role.key, { budget: { ...role.budget, max_total_tokens: Number(event.target.value) } })} className="input-base mt-2 w-full tabular-nums" /></label></div>
               <label className="mt-4 block"><span className="field-label">独立目标</span><textarea value={role.goal} disabled={!role.enabled} maxLength={10000} rows={3} onChange={(event) => update(role.key, { goal: event.target.value })} className="input-base mt-2 w-full resize-y" /></label>
               <p className="mt-3 text-xs leading-relaxed text-muted-foreground">此角色拥有独立对话、私有上下文、运行状态和预算。Skills 是工作方法提示，不会授予额外权限。</p>
             </div>

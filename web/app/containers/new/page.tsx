@@ -11,7 +11,7 @@ import { PresetRoleList } from "@/components/containers/PresetRoleList";
 import { PresetSources } from "@/components/containers/PresetSources";
 import { TeamPresetPreview } from "@/components/containers/TeamPresetPreview";
 import { ApiError, apiFetch, idempotencyKey } from "@/lib/api";
-import { deriveProjectName, roleBoundsValid, roleDrafts } from "@/lib/team-presets";
+import { deriveProjectName, roleBoundsValid, roleBudgetValid, roleDrafts, roleOverride } from "@/lib/team-presets";
 import type {
   CreateTeamFromPresetRequest,
   CreateTeamFromPresetResponse,
@@ -30,6 +30,8 @@ import type {
 
 type PageMode = "smart" | "browse";
 type BusyAction = "start" | "later" | "manual" | null;
+type TeamMode = "guided" | "autonomous";
+type BudgetMode = "bounded" | "max";
 
 const MODE_OPTIONS = [
   { value: "smart" as const, label: "智能推荐", icon: Sparkles },
@@ -47,6 +49,8 @@ export default function NewContainerPage() {
   const [gatewayStatus, setGatewayStatus] = useState<AIGatewayStatus | null>(null);
   const [gatewayStatusError, setGatewayStatusError] = useState<string | null>(null);
   const [defaultEngine, setDefaultEngine] = useState("openhands");
+  const [teamMode, setTeamMode] = useState<TeamMode>("guided");
+  const [budgetMode, setBudgetMode] = useState<BudgetMode>("bounded");
   const [goal, setGoal] = useState("");
   const [industry, setIndustry] = useState("");
   const [pace, setPace] = useState<"steady" | "fast">("steady");
@@ -132,7 +136,7 @@ export default function NewContainerPage() {
     && goal.trim().length >= 3
     && workdir.startsWith("/")
     && roleBoundsValid(roles)
-    && roles.filter((role) => role.enabled).every((role) => role.role.trim() && role.goal.trim() && role.budget.max_total_tokens > 0 && role.budget.max_total_tokens <= 200_000),
+    && roles.filter((role) => role.enabled).every((role) => role.role.trim() && role.goal.trim() && roleBudgetValid(role.budget)),
   ), [goal, name, roles, selected, workdir]);
 
   const startValid = useMemo(() => {
@@ -176,16 +180,11 @@ export default function NewContainerPage() {
       shared_context: sharedContext.trim(),
       base_workdir: workdir.trim(),
       default_workspace_policy: policy,
-      role_overrides: roles.map((role) => ({
-        key: role.key,
-        enabled: role.enabled,
-        role: role.role.trim(),
-        goal: role.goal.trim(),
-        budget: { ...role.budget },
-        execution_engine: role.execution_engine,
-      })),
+      role_overrides: roles.map(roleOverride),
       start_immediately: startImmediately,
       default_execution_engine: defaultEngine,
+      team_mode: teamMode,
+      budget_mode: budgetMode,
     };
     try {
       const result = await apiFetch<CreateTeamFromPresetResponse>("/api/work-containers/from-preset", {
@@ -236,15 +235,19 @@ export default function NewContainerPage() {
 
             {recommendError ? <div role="alert" className="rounded-xl border border-warning/25 bg-warning/5 p-4 text-sm text-warning">{recommendError}</div> : null}
 
-            {selected ? <><section className="surface overflow-hidden"><div className="border-b border-border bg-gradient-to-r from-white to-background px-5 py-5 sm:px-7"><div className="flex flex-wrap items-center gap-2"><span className="badge badge-info">已选择</span><span className="text-xs font-semibold text-muted-foreground">v{selected.version}</span></div><h2 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{selected.name}</h2><p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{selected.summary}</p></div><div className="p-5 sm:p-7"><PresetSources sources={selected.sources} /></div></section>{engines.length ? <ExecutionEnginePicker engines={engines} selectedId={defaultEngine} onSelect={selectDefaultEngine} /> : null}<PresetRoleList preset={selected} roles={roles} engines={engines} onChange={setRoles} /><details className="surface overflow-hidden"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-5 sm:px-7 [&::-webkit-details-marker]:hidden"><span className="flex items-center gap-3"><Settings2 className="h-4 w-4 text-accent" /><span><span className="block font-semibold">项目与工作区设置</span><span className="mt-0.5 block text-xs text-muted-foreground">名称、共享上下文、路径与 Worktree 策略</span></span></span><span className="text-xs font-semibold text-accent">展开设置</span></summary><div className="border-t border-border p-5 sm:p-7"><WorkspaceSettings name={name} setName={(value) => { setName(value); setNameEdited(true); }} sharedContext={sharedContext} setSharedContext={setSharedContext} workdir={workdir} setWorkdir={setWorkdir} policy={policy} setPolicy={setPolicy} /></div></details></> : mode === "smart" ? <section className="rounded-xl border border-dashed border-border-strong bg-white/55 px-6 py-10 text-center"><Sparkles className="mx-auto h-6 w-6 text-accent" /><h2 className="mt-3 font-semibold">描述目标后，团队会在这里就绪</h2><p className="mt-1 text-sm text-muted-foreground">你也可以切换到“浏览模板”直接选择。</p></section> : null}
+            {selected ? <><section className="surface overflow-hidden"><div className="border-b border-border bg-gradient-to-r from-white to-background px-5 py-5 sm:px-7"><div className="flex flex-wrap items-center gap-2"><span className="badge badge-info">已选择</span><span className="text-xs font-semibold text-muted-foreground">v{selected.version}</span></div><h2 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{selected.name}</h2><p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{selected.summary}</p></div><div className="p-5 sm:p-7"><PresetSources sources={selected.sources} /></div></section><TeamAutonomySettings teamMode={teamMode} budgetMode={budgetMode} onTeamModeChange={setTeamMode} onBudgetModeChange={setBudgetMode} />{engines.length ? <ExecutionEnginePicker engines={engines} selectedId={defaultEngine} onSelect={selectDefaultEngine} /> : null}<PresetRoleList preset={selected} roles={roles} engines={engines} budgetMode={budgetMode} onChange={setRoles} /><details className="surface overflow-hidden"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-5 sm:px-7 [&::-webkit-details-marker]:hidden"><span className="flex items-center gap-3"><Settings2 className="h-4 w-4 text-accent" /><span><span className="block font-semibold">项目与工作区设置</span><span className="mt-0.5 block text-xs text-muted-foreground">名称、共享上下文、路径与 Worktree 策略</span></span></span><span className="text-xs font-semibold text-accent">展开设置</span></summary><div className="border-t border-border p-5 sm:p-7"><WorkspaceSettings name={name} setName={(value) => { setName(value); setNameEdited(true); }} sharedContext={sharedContext} setSharedContext={setSharedContext} workdir={workdir} setWorkdir={setWorkdir} policy={policy} setPolicy={setPolicy} /></div></details></> : mode === "smart" ? <section className="rounded-xl border border-dashed border-border-strong bg-white/55 px-6 py-10 text-center"><Sparkles className="mx-auto h-6 w-6 text-accent" /><h2 className="mt-3 font-semibold">描述目标后，团队会在这里就绪</h2><p className="mt-1 text-sm text-muted-foreground">你也可以切换到“浏览模板”直接选择。</p></section> : null}
 
             <button type="button" onClick={() => setManualMode(true)} className="btn btn-ghost w-full border border-dashed border-border-strong">高级用户：不使用模板，创建空白容器</button>
           </main>
-          {selected ? <TeamPresetPreview preset={selected} roles={roles} valid={valid} startValid={startValid} busyAction={busyAction === "manual" ? null : busyAction} error={!roleBoundsValid(roles) ? "请启用 2–8 个角色。" : !startValid ? "所选引擎尚未在 worker 运行时启用；可以先创建，稍后启用再启动。" : submitError} onSubmit={(start) => void createPresetTeam(start)} /> : null}
+          {selected ? <TeamPresetPreview preset={selected} roles={roles} teamMode={teamMode} budgetMode={budgetMode} valid={valid} startValid={startValid} busyAction={busyAction === "manual" ? null : busyAction} error={!roleBoundsValid(roles) ? "请启用 2–8 个角色。" : !startValid ? "所选引擎尚未在 worker 运行时启用；可以先创建，稍后启用再启动。" : submitError} onSubmit={(start) => void createPresetTeam(start)} /> : null}
         </div>
       )}
     </div>
   );
+}
+
+function TeamAutonomySettings({ teamMode, budgetMode, onTeamModeChange, onBudgetModeChange }: { teamMode: TeamMode; budgetMode: BudgetMode; onTeamModeChange: (mode: TeamMode) => void; onBudgetModeChange: (mode: BudgetMode) => void; }) {
+  return <section className="surface overflow-hidden"><div className="border-b border-border px-5 py-5 sm:px-7"><h2 className="section-title">协作与预算</h2><p className="mt-1 text-sm text-muted-foreground">自主模式按团队阶段并行工作，并将已完成角色的公开输出自动 Handoff 给下一阶段。</p></div><div className="space-y-5 p-5 sm:p-7"><fieldset><legend className="field-label">团队模式</legend><div className="mt-2 grid gap-3 sm:grid-cols-2">{[{ id: "guided" as const, title: "引导模式", text: "沿用当前启动方式与人工 Handoff。" }, { id: "autonomous" as const, title: "智能自主模式", text: "角色自行拆解子任务；同阶段并行，依赖阶段自动 Handoff。" }].map((option) => <button key={option.id} type="button" onClick={() => onTeamModeChange(option.id)} aria-pressed={teamMode === option.id} className={`rounded-xl border p-4 text-left ${teamMode === option.id ? "border-accent/35 bg-accent/5 ring-4 ring-accent/5" : "border-border hover:border-border-strong"}`}><span className="block text-sm font-semibold">{option.title}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.text}</span></button>)}</div></fieldset><fieldset><legend className="field-label">预算设置</legend><div className="mt-2 grid gap-3 sm:grid-cols-2">{[{ id: "bounded" as const, title: "受限预算", text: "保留每个角色的 Token、调用、成本与时间上限。" }, { id: "max" as const, title: "Max · 无上限", text: "不自动停止；由 AI 在验收完成后收尾，或由你手动暂停/取消。" }].map((option) => <button key={option.id} type="button" onClick={() => onBudgetModeChange(option.id)} aria-pressed={budgetMode === option.id} className={`rounded-xl border p-4 text-left ${budgetMode === option.id ? "border-warning/40 bg-warning/5 ring-4 ring-warning/5" : "border-border hover:border-border-strong"}`}><span className="block text-sm font-semibold">{option.title}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.text}</span></button>)}</div>{budgetMode === "max" ? <p role="note" className="mt-3 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-warning">Max 仍会记录用量，并保留工作区隔离、高风险审批与暂停/取消控制；它只移除自动预算和轮次上限。</p> : null}</fieldset></div></section>;
 }
 
 interface WorkspaceSettingsProps {

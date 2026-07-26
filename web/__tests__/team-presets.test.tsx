@@ -6,7 +6,7 @@ import { ExecutionEnginePicker } from "@/components/containers/ExecutionEnginePi
 import { PresetRoleList } from "@/components/containers/PresetRoleList";
 import { PresetSources } from "@/components/containers/PresetSources";
 import { TeamPresetPreview } from "@/components/containers/TeamPresetPreview";
-import { aggregateTeamBudget, deriveProjectName, roleBoundsValid, roleDrafts, safeGatewayConsoleUrl } from "@/lib/team-presets";
+import { aggregateTeamBudget, deriveProjectName, roleBoundsValid, roleBudgetValid, roleDrafts, roleOverride, safeGatewayConsoleUrl } from "@/lib/team-presets";
 import type { AIGatewayStatus, ExecutionEngineInfo, TeamPreset, TeamPresetRecommendationResponse } from "@/lib/types";
 
 const source = {
@@ -98,6 +98,14 @@ describe("Agent Team preset helpers", () => {
     expect(aggregateTeamBudget(roles)).toEqual({ tokens: 10_000, calls: 5, cost: 1 });
     expect(roleBoundsValid(roles)).toBe(false);
   });
+
+  it("keeps role overrides inside the backend budget contract", () => {
+    const roles = roleDrafts(preset);
+    expect(roleBudgetValid(roles[0].budget)).toBe(true);
+    expect(roleBudgetValid({ ...roles[0].budget, max_total_tokens: 99_999_990 })).toBe(false);
+    roles[0].enabled = false;
+    expect(roleOverride(roles[0])).toEqual({ key: "producer", enabled: false });
+  });
 });
 
 describe("Execution engine and preset controls", () => {
@@ -129,11 +137,18 @@ describe("Execution engine and preset controls", () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     const roles = roleDrafts(preset).map((role) => ({ ...role, execution_engine: "codex" }));
-    render(<TeamPresetPreview preset={preset} roles={roles} valid startValid={false} busyAction={null} error="运行待启用" onSubmit={onSubmit} />);
+    render(<TeamPresetPreview preset={preset} roles={roles} teamMode="guided" budgetMode="bounded" valid startValid={false} busyAction={null} error="运行待启用" onSubmit={onSubmit} />);
     expect(screen.getByRole("button", { name: /一键创建并启动/ })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: /仅创建，稍后启动/ }));
     expect(onSubmit).toHaveBeenCalledWith(false);
     expect(screen.getByText("仅创建", { selector: ".sm\\:hidden" })).toBeInTheDocument();
+  });
+
+  it("labels autonomous Max teams without showing a synthetic token cap", () => {
+    render(<TeamPresetPreview preset={preset} roles={roleDrafts(preset)} teamMode="autonomous" budgetMode="max" valid startValid busyAction={null} error={null} onSubmit={vi.fn()} />);
+    expect(screen.getByText("Max", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText(/自主阶段协作与自动 Handoff 已启用/)).toBeInTheDocument();
+    expect(screen.getByText(/Max 不会自动停止/)).toBeInTheDocument();
   });
 });
 
