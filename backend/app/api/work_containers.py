@@ -183,6 +183,7 @@ def _session_dict(item: WorkSession, *, include_private: bool = False) -> dict:
         "worktree_path": item.worktree_path,
         "workspace_status": item.workspace_status,
         "workspace_error": item.workspace_error,
+        "run_started_at": run.started_at.isoformat() if run and run.started_at else None,
         "created_at": item.created_at.isoformat(),
         "updated_at": item.updated_at.isoformat(),
     }

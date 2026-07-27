@@ -396,6 +396,11 @@ class Orchestrator:
         if owner is not None:
             owner.workspace_status = "PROVISIONING"
             owner.workspace_error = None
+            owner.updated_at = utcnow()
+            # Provisioning can wait on Docker's published-port proxy. Persist the
+            # real stage before that wait so the operator never sees a static
+            # planning state while the worker is working.
+            self._commit()
         if run.workspace_id:
             working_dir = (
                 owner.worktree_path

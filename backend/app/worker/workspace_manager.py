@@ -217,16 +217,22 @@ class WorkspaceManager:
 
     def _wait_healthy(self, base_url: str, session_key: str) -> None:
         deadline = time.monotonic() + HEALTH_TIMEOUT_SECONDS
+        last_diagnosis = "no response"
         with httpx.Client(headers={"X-Session-API-Key": session_key}, timeout=5.0) as client:
             while time.monotonic() < deadline:
                 try:
                     resp = client.get(f"{base_url}/health")
                     if resp.status_code == 200:
                         return
-                except httpx.HTTPError:
-                    pass
+                    last_diagnosis = f"HTTP {resp.status_code}"
+                except httpx.HTTPError as exc:
+                    last_diagnosis = type(exc).__name__
                 time.sleep(1.0)
-        raise WorkspaceError(f"workspace at {base_url} not healthy within {HEALTH_TIMEOUT_SECONDS}s")
+        raise WorkspaceError(
+            "agent workspace not healthy within "
+            f"{HEALTH_TIMEOUT_SECONDS:.0f}s (last health check: {last_diagnosis}); "
+            "check Docker Desktop and the configured agent-server image, then retry"
+        )
 
     @staticmethod
     def _remove_container(container) -> None:

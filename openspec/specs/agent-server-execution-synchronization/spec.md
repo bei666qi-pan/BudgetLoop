@@ -83,3 +83,14 @@ BudgetLoop SHALL configure OpenHands server-transport conversations with OpenHan
 #### Scenario: Full-access coding task can modify and verify a project
 - **WHEN** BudgetLoop creates an OpenHands conversation for a full-access coding task
 - **THEN** the agent request includes OpenHands' registered `terminal`, `file_editor`, and `task_tracker` tools, allowing the agent to inspect the mounted project, edit files, and run the requested test command
+
+### Requirement: Agent-server workspace startup failures converge
+BudgetLoop SHALL bound OpenHands agent-server workspace health polling and SHALL fail the run when the published health endpoint does not become healthy. It SHALL preserve a sanitized diagnosis that identifies workspace startup as the failed stage, release any created workspace resources, and SHALL NOT continue into conversation creation or execution.
+
+#### Scenario: Published agent-server health endpoint remains unavailable
+- **WHEN** a newly provisioned agent-server workspace repeatedly returns a transport error or non-success health response through the configured startup timeout
+- **THEN** the worker marks the run failed with a sanitized workspace startup error, removes the failed workspace container, and does not leave the run in `PLANNING`
+
+#### Scenario: Workspace health endpoint succeeds
+- **WHEN** the agent-server health endpoint returns success before the startup timeout
+- **THEN** the worker proceeds to initialize the configured workspace and create the conversation normally

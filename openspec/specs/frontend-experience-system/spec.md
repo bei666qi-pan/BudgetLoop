@@ -6,6 +6,17 @@ Define the shared visual, responsive, accessible, and trustworthy interaction fo
 
 ## Requirements
 
+### Requirement: Persistent BudgetLoop brand mark
+The web application SHALL render the BudgetLoop interlocking-loop mark in the persistent application shell and SHALL provide an equivalent branded web metadata icon. The mark SHALL have a meaningful accessible name where it is interactive and SHALL not add non-essential motion to the persistent navigation.
+
+#### Scenario: Operator opens a primary web route
+- **WHEN** the operator visits any route rendered inside the application shell
+- **THEN** the header displays the recognizable BudgetLoop interlocking-loop mark next to the product name without reducing navigation accessibility or responsive usability
+
+#### Scenario: Browser displays site metadata
+- **WHEN** a browser requests the BudgetLoop application icon
+- **THEN** it receives a vector or raster icon based on the same interlocking-loop brand geometry used by the product shell
+
 ### Requirement: Shared visual system
 The frontend SHALL use shared tokens and reusable primitives for typography, spacing, color, surfaces, controls, status, feedback, and motion across all primary routes. Each recurring pattern (tables, tab bars, progress bars, status badges, banners) SHALL have exactly one canonical implementation that routes reuse, color values SHALL come from the design-token palette rather than ad-hoc hex or raw palette utilities, and the committed design-system document SHALL describe the theme the application actually ships.
 
@@ -44,11 +55,19 @@ Interactive elements SHALL be keyboard reachable, display visible focus, expose 
 - **THEN** non-essential animation and transitions are disabled or reduced to effectively immediate changes
 
 ### Requirement: Trustworthy feedback
-The frontend SHALL clearly distinguish loading, empty, success, warning, terminal failure, API failure, and partial-data states and SHALL not present speculative or simulated backend facts as real.
+The frontend SHALL clearly distinguish loading, empty, success, warning, terminal failure, API failure, partial-data, and persisted execution-startup states and SHALL not present speculative or simulated backend facts as real. For an active Agent Team session, it SHALL show the known queued, workspace-provisioning, workspace-ready/agent-starting, or active-execution stage with accessible text and a recognizable activity indicator. For a recorded startup failure, it SHALL identify the failed stage, show the sanitized persisted error, and stop presenting the session as actively waiting.
 
 #### Scenario: Backend error is shown
 - **WHEN** an API action fails
 - **THEN** the message identifies the failed action in plain language, preserves recoverable user input or known data, and offers retry when safe
+
+#### Scenario: Agent workspace is provisioning
+- **WHEN** an Agent Team session reports persisted workspace provisioning state
+- **THEN** the workspace presents a labeled activity indicator and the known preparation stage without fabricating progress or execution completion
+
+#### Scenario: Agent startup failure is recorded
+- **WHEN** an Agent Team session reports a failed workspace startup
+- **THEN** the workspace displays the persisted actionable error and does not retain a generic planning spinner
 
 ### Requirement: Readable operational typography
 Content, controls, tables, charts, code, and metadata SHALL use intentional type sizes and line heights that remain readable at supported breakpoints; browser-default control typography SHALL not determine the interface hierarchy.
