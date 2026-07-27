@@ -120,7 +120,9 @@ describe("home conversational intake", () => {
     const user = userEvent.setup();
     const postMessage = vi.fn();
     window.webkit = { messageHandlers: { budgetloopPickProjectDir: { postMessage } } };
-    apiFetchMock.mockResolvedValueOnce(draft());
+    const fullAccessDraft = draft();
+    fullAccessDraft.execution.default_engine = "codex";
+    apiFetchMock.mockResolvedValueOnce(fullAccessDraft);
     render(<HomeTaskIntake />);
 
     await user.click(screen.getByRole("button", { name: "选择项目文件夹" }));
@@ -133,6 +135,8 @@ describe("home conversational intake", () => {
     await screen.findByRole("heading", { name: "确认这份配置，就可以开始" });
     expect(screen.getByRole("radio", { name: /直接修改项目/ })).toBeChecked();
     expect(screen.getByLabelText("项目文件夹")).toHaveValue("/tmp/selected-before-planning");
+    expect(screen.getByLabelText("执行 Agent")).toHaveValue("openhands");
+    expect(screen.queryByRole("option", { name: /Codex/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认并启动" })).toBeDisabled();
   });
 

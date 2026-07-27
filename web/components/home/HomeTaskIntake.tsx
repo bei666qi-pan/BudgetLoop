@@ -123,12 +123,22 @@ function TaskSetupReview({
   const defaultEngine = draft.execution.engines.find(
     (engine) => engine.id === draft.execution.default_engine,
   );
+  const availableEngines = draft.execution.engines.filter(
+    (engine) => access.folder_access !== "full_access" || engine.id === "openhands",
+  );
+
+  useEffect(() => {
+    if (access.folder_access === "full_access" && draft.execution.default_engine !== "openhands") {
+      onEngineChange("openhands");
+    }
+  }, [access.folder_access, draft.execution.default_engine, onEngineChange]);
 
   const updateIntent = (field: keyof TaskSetupDraft["intent"], value: string) => {
     onDraftChange({ ...draft, intent: { ...draft.intent, [field]: value } });
   };
 
   const changeAccess = (patch: Partial<WorkspaceAccessSelection>) => {
+    if (patch.folder_access === "full_access") onEngineChange("openhands");
     onAccessChange({ ...access, ...patch, full_access_acknowledged: false });
   };
 
@@ -163,7 +173,7 @@ function TaskSetupReview({
       <div className="space-y-5 p-5 sm:p-7">
         <div className="grid gap-4 rounded-xl border border-border bg-muted/20 p-4 md:grid-cols-[1fr_1.15fr]" aria-label="核心配置">
           <div><span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><UsersRound className="h-4 w-4 text-accent" />Agent 团队</span><strong className="mt-2 block text-base">{draft.team.preset.name}</strong><span className="mt-1 block text-xs text-muted-foreground">{enabled.length} 个角色协作</span></div>
-          <label><span className="field-label">执行 Agent</span><select aria-label="执行 Agent" value={draft.execution.default_engine} onChange={(event) => onEngineChange(event.target.value)} className="input-base mt-2 w-full">{draft.execution.engines.filter((engine) => ["openhands", "codex", "gemini-cli"].includes(engine.id)).map((engine) => <option key={engine.id} value={engine.id} disabled={!engine.runtime_available}>{engine.name}{engine.id === draft.execution.recommended_engine ? "（推荐）" : ""}{engine.runtime_available ? "" : " · 未就绪"}</option>)}</select><span className={`mt-1.5 block text-xs ${defaultEngine?.runtime_available ? "text-muted-foreground" : "text-critical"}`}>{defaultEngine?.runtime_available ? `${defaultEngine.name} 已就绪` : `${defaultEngine?.name ?? "所选 Agent"} 当前未就绪，请选择可用的 Agent`}</span></label>
+          <label><span className="field-label">执行 Agent</span><select aria-label="执行 Agent" value={draft.execution.default_engine} onChange={(event) => onEngineChange(event.target.value)} className="input-base mt-2 w-full">{availableEngines.filter((engine) => ["openhands", "codex", "gemini-cli"].includes(engine.id)).map((engine) => <option key={engine.id} value={engine.id} disabled={!engine.runtime_available}>{engine.name}{engine.id === draft.execution.recommended_engine ? "（推荐）" : ""}{engine.runtime_available ? "" : " · 未就绪"}</option>)}</select><span className={`mt-1.5 block text-xs ${defaultEngine?.runtime_available ? "text-muted-foreground" : "text-critical"}`}>{access.folder_access === "full_access" ? "直接修改项目仅支持 OpenHands，以安全挂载所选文件夹并创建独立 worktree。" : defaultEngine?.runtime_available ? `${defaultEngine.name} 已就绪` : `${defaultEngine?.name ?? "所选 Agent"} 当前未就绪，请选择可用的 Agent`}</span></label>
         </div>
 
         <div className="rounded-xl border border-border p-4 sm:p-5">
@@ -178,7 +188,7 @@ function TaskSetupReview({
 
         <details className="rounded-xl border border-border">
           <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-semibold [&::-webkit-details-marker]:hidden"><span className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-accent" />查看或调整 Agent 角色与预算</span><span className="flex items-center gap-2 text-xs text-muted-foreground">{enabled.length} 个角色<ChevronDown className="h-4 w-4" /></span></summary>
-          <div className="border-t border-border bg-muted/15 p-3 sm:p-4"><div className="mb-3 rounded-lg bg-white px-3 py-2 text-xs text-muted-foreground">总上限 {Math.round(total.tokens / 1000)}k Token · {total.calls} 次调用 · ${total.cost.toFixed(2)} · 高风险操作需确认</div><PresetRoleList preset={draft.team.preset} roles={roles} engines={draft.execution.engines} onChange={onRolesChange} /><div className="mt-3 text-right"><Link href="/containers/new" className="text-xs font-semibold text-accent hover:underline">打开完整 Agent Team 配置</Link></div></div>
+          <div className="border-t border-border bg-muted/15 p-3 sm:p-4"><div className="mb-3 rounded-lg bg-white px-3 py-2 text-xs text-muted-foreground">总上限 {Math.round(total.tokens / 1000)}k Token · {total.calls} 次调用 · ${total.cost.toFixed(2)} · 高风险操作需确认</div><PresetRoleList preset={draft.team.preset} roles={roles} engines={availableEngines} onChange={onRolesChange} /><div className="mt-3 text-right"><Link href="/containers/new" className="text-xs font-semibold text-accent hover:underline">打开完整 Agent Team 配置</Link></div></div>
         </details>
 
         <fieldset className={`rounded-xl border p-4 sm:p-5 ${access.folder_access === "full_access" ? "border-warning/35 bg-warning/[0.035]" : "border-success/25 bg-success/[0.025]"}`}>

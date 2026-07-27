@@ -1210,6 +1210,19 @@ class TestEnsureWorkspace:
         ws_mgr.provision.assert_called_once()
         assert run.workspace_id == "new-ctr"
 
+    def test_session_provisioning_state_is_committed_before_workspace_wait(self):
+        session = MagicMock()
+        ws_mgr = MagicMock()
+        ws_mgr.provision.return_value = MagicMock(container_id="new-ctr")
+        owner = MagicMock(worktree_enabled=False, workspace_status="PENDING")
+        orch = _make_orch(mock_session=session, workspace_manager=ws_mgr)
+        orch._work_session = MagicMock(return_value=owner)
+
+        orch._ensure_workspace(_make_run(workspace_id=None), _make_task(), {})
+
+        assert owner.workspace_status == "READY"
+        assert session.commit.called
+
     def test_existing_workspace_attach(self):
         session = MagicMock()
         ws_mgr = MagicMock()

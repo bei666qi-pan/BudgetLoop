@@ -279,6 +279,15 @@ def test_wait_healthy_timeout():
                     mgr._wait_healthy("http://127.0.0.1:9999", "key")
 
 
+def test_wait_healthy_timeout_keeps_sanitized_last_status():
+    mgr = _build_mgr_with_client()
+    with patch("app.worker.workspace_manager.HEALTH_TIMEOUT_SECONDS", 0), patch(
+        "app.worker.workspace_manager.httpx.Client"
+    ) as client_cls:
+        with pytest.raises(WorkspaceError, match="no response"):
+            mgr._wait_healthy("http://127.0.0.1:9999", "key")
+
+
 # ============================================================================
 # _remove_container
 # ============================================================================

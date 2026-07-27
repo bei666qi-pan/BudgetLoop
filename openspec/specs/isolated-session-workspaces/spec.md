@@ -41,10 +41,10 @@ An Agent Team SHALL default to isolated workspaces and SHALL use a host project 
 - **THEN** the returned path populates the permission control for review but grants no execution access until final confirmation
 
 ### Requirement: Full-access team worktree isolation
-Every enabled session in a full-access preset team SHALL operate in a unique server-generated Git worktree derived from its session identifier and SHALL never execute concurrently in the selected repository root.
+Every enabled session in a full-access preset team SHALL operate in a unique server-generated Git worktree derived from its session identifier and SHALL never execute concurrently in the selected repository root. A full-access team SHALL select a server execution engine that can mount the confirmed host project.
 
 #### Scenario: Full-access sessions provision successfully
-- **WHEN** confirmed team runs provision the writable host project
+- **WHEN** confirmed team runs provision the writable host project through the supported server execution engine
 - **THEN** each session receives a unique branch and worktree below the controlled workspace location and its Agent conversation starts in that worktree
 
 #### Scenario: Worktree cannot be honored
@@ -109,3 +109,10 @@ The task API SHALL accept an optional project directory only together with an ex
 #### Scenario: Sensitive root is rejected
 - **WHEN** a task creation request names a system location or the filesystem root as the project directory
 - **THEN** the API rejects the request with a validation error identifying the disallowed location
+
+### Requirement: Session workspace status reflects provisioning failure
+The worker SHALL persist `PROVISIONING` before it waits for a session workspace and SHALL persist `FAILED` with an actionable sanitized workspace error if provisioning fails. It SHALL NOT leave a failed workspace as `PENDING`, `PROVISIONING`, or `READY`.
+
+#### Scenario: Agent-server cannot become healthy
+- **WHEN** a session workspace health check times out or reports an unrecoverable startup error
+- **THEN** its work session reports `workspace_status` `FAILED` with the corresponding readable error and its run becomes terminally failed

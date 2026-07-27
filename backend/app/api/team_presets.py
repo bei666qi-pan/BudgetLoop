@@ -321,6 +321,21 @@ def create_team_from_preset(
     if unknown_engines:
         raise HTTPException(status_code=422, detail=f"unknown execution engines: {unknown_engines}")
 
+    if body.folder_access == "full_access":
+        unsupported_engines = sorted(
+            engine_id
+            for engine_id in requested_engines
+            if (engine := get_engine(engine_id)) is not None and engine.transport != "server"
+        )
+        if unsupported_engines:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "full_access Agent Teams require the OpenHands server engine; "
+                    f"CLI engines cannot access the selected host folder: {unsupported_engines}"
+                ),
+            )
+
     applied_roles = []
     for role in preset.roles:
         override = overrides.get(role.key)

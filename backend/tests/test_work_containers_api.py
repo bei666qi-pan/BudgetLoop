@@ -396,6 +396,29 @@ def test_full_access_team_persists_acknowledged_path_and_worktrees(client, pg_se
         assert run.model_config["project_dir"] == "/tmp/budgetloop-project"
 
 
+def test_full_access_team_rejects_cli_engine_before_creating_runs(client):
+    c, _ = client
+    response = c.post(
+        "/api/work-containers/from-preset",
+        headers={**AUTH, "Idempotency-Key": "team-full-access-cli-001"},
+        json={
+            "preset_id": "software-delivery",
+            "preset_version": 1,
+            "name": "CLI 全访问团队",
+            "project_goal": "确保完整访问不会被不可挂载的 CLI 引擎接受",
+            "base_workdir": "/workspace/project",
+            "default_workspace_policy": "worktree",
+            "default_execution_engine": "codex",
+            "folder_access": "full_access",
+            "project_dir": "/tmp/budgetloop-project",
+            "full_access_acknowledged": True,
+            "start_immediately": False,
+        },
+    )
+    assert response.status_code == 422
+    assert "OpenHands" in response.json()["detail"]
+
+
 @pytest.mark.parametrize(
     "fields",
     [

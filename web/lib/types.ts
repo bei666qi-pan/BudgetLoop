@@ -290,6 +290,7 @@ export interface WorkSessionSummary {
   worktree_path: string | null;
   workspace_status: "PENDING" | "PROVISIONING" | "READY" | "FAILED" | string;
   workspace_error: string | null;
+  run_started_at?: string | null;
   created_at: string;
   updated_at: string;
 }
