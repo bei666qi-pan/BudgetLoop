@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def read_json(path: str) -> dict[str, Any]:
-    return json.loads((ROOT / path).read_text())
+    return json.loads((ROOT / path).read_text(encoding="utf-8"))
 
 
 def read_toml(path: str) -> dict[str, Any]:
@@ -25,7 +25,7 @@ def read_toml(path: str) -> dict[str, Any]:
 
 
 def main() -> int:
-    version = (ROOT / "VERSION").read_text().strip()
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     expected = {
         "web/package.json": read_json("web/package.json")["version"],
         "web/package-lock.json": read_json("web/package-lock.json")["version"],
@@ -68,7 +68,7 @@ def main() -> int:
         errors.append(f"missing release notes: {release_notes.relative_to(ROOT)}")
 
     for readme in ("README.md", "README.zh-CN.md"):
-        text = (ROOT / readme).read_text()
+        text = (ROOT / readme).read_text(encoding="utf-8")
         if f"v{version}" not in text:
             errors.append(f"{readme}: missing v{version}")
 
