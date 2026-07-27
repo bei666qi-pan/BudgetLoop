@@ -5,18 +5,23 @@ import { useId } from "react";
 interface BudgetLoopActivityMarkProps {
   label: string;
   compact?: boolean;
+  decorative?: boolean;
+  showLabel?: boolean;
 }
 
 export function BudgetLoopActivityMark({
   label,
   compact = false,
+  decorative = false,
+  showLabel = compact,
 }: BudgetLoopActivityMarkProps) {
   const filterId = `budgetloop-disturbance-${useId().replaceAll(":", "")}`;
 
   return (
     <span
-      role="status"
-      aria-label={label}
+      role={decorative ? undefined : "status"}
+      aria-label={decorative ? undefined : label}
+      aria-hidden={decorative || undefined}
       className="inline-flex items-center gap-2.5"
       data-activity-mark="budgetloop"
       data-variant={compact ? "compact" : "full"}
@@ -73,7 +78,7 @@ export function BudgetLoopActivityMark({
           </g>
         </svg>
       </span>
-      {compact ? <span className="text-sm font-semibold">{label}</span> : null}
+      {compact && showLabel ? <span className="text-sm font-semibold">{label}</span> : null}
     </span>
   );
 }

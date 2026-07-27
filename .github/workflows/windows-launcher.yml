@@ -2,12 +2,30 @@ name: Windows launcher
 
 on:
   push:
-    branches: ["codex/**"]
+    branches: ["main", "codex/**"]
     paths:
+      - "VERSION"
+      - "README.md"
+      - "README.zh-CN.md"
+      - "docs/releases/**"
+      - "scripts/check_release_version.py"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - "backend/pyproject.toml"
+      - "desktop/Info.plist"
       - "desktop/windows/**"
       - ".github/workflows/windows-launcher.yml"
   pull_request:
     paths:
+      - "VERSION"
+      - "README.md"
+      - "README.zh-CN.md"
+      - "docs/releases/**"
+      - "scripts/check_release_version.py"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - "backend/pyproject.toml"
+      - "desktop/Info.plist"
       - "desktop/windows/**"
       - ".github/workflows/windows-launcher.yml"
   workflow_dispatch:
@@ -20,10 +38,15 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
+      - name: Verify release version parity
+        run: python scripts/check_release_version.py
       - name: Install Tauri CLI
         run: npm ci
         working-directory: desktop/windows

@@ -1,10 +1,4 @@
-# cross-platform-release-distribution Specification
-
-## Purpose
-
-Define traceable, verifiable BudgetLoop releases for the supported desktop platforms.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Traceable cross-platform release
 BudgetLoop SHALL publish each cross-platform release from one immutable Git tag; SHALL keep the canonical release version synchronized across the Web package, backend package, macOS bundle, Windows package, Tauri bundle, Rust crate, and release documentation; and SHALL make the source version, Windows MSI, macOS archive, checksums, prerequisites, and validation evidence discoverable from its GitHub Release.

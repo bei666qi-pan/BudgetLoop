@@ -7,7 +7,13 @@ DESKTOP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$DESKTOP_DIR/.." && pwd)"
 APP_DIR="$DESKTOP_DIR/build/BudgetLoop.app"
 BIN_PATH="$APP_DIR/Contents/MacOS/BudgetLoop"
-RELEASE_ZIP="$DESKTOP_DIR/build/BudgetLoop-local-launcher-macos.zip"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$DESKTOP_DIR/Info.plist")"
+CANONICAL_VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
+if [[ "$VERSION" != "$CANONICAL_VERSION" ]]; then
+  echo "Info.plist version $VERSION does not match VERSION $CANONICAL_VERSION" >&2
+  exit 1
+fi
+RELEASE_ZIP="$DESKTOP_DIR/build/BudgetLoop-v${VERSION}-macos.zip"
 LOCAL_SIGN_IDENTITY="BudgetLoop Local Signing"
 if [[ -n "${BUDGETLOOP_CODESIGN_IDENTITY:-}" ]]; then
   SIGN_IDENTITY="$BUDGETLOOP_CODESIGN_IDENTITY"
@@ -46,6 +52,12 @@ ditto "$APP_DIR" "$REPO_ROOT/BudgetLoop.app"
 echo "==> 生成本地安装归档"
 rm -f "$RELEASE_ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$REPO_ROOT/BudgetLoop.app" "$RELEASE_ZIP"
+
+BUILT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_DIR/Contents/Info.plist")"
+if [[ "$BUILT_VERSION" != "$VERSION" ]]; then
+  echo "Built app version $BUILT_VERSION does not match release $VERSION" >&2
+  exit 1
+fi
 
 echo "==> 构建完成：$APP_DIR"
 echo "    已安装：$REPO_ROOT/BudgetLoop.app"

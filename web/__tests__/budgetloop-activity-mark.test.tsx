@@ -23,4 +23,13 @@ describe("BudgetLoopActivityMark", () => {
     );
     expect(container).toHaveTextContent("正在创建…");
   });
+
+  it("can be decorative when surrounding status copy is already accessible", () => {
+    const { container } = render(
+      <BudgetLoopActivityMark compact decorative showLabel={false} label="正在准备工作区" />,
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(container.firstElementChild).toHaveAttribute("aria-hidden", "true");
+    expect(container).not.toHaveTextContent("正在准备工作区");
+  });
 });

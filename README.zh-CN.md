@@ -1,115 +1,149 @@
-# BudgetLoop
+<div align="center">
+  <img src="./desktop/Resources/BudgetLoop.svg" width="144" alt="BudgetLoop 标志">
+  <h1>BudgetLoop</h1>
+  <p><strong>一个预算感知的 Coding Agent 控制面：规划、执行、验证、自我恢复，并按你的边界停止。</strong></p>
+</div>
 
-<p align="center"><img src="./desktop/Resources/BudgetLoop.svg" width="132" alt="BudgetLoop 标志"></p>
+<div align="center">
+  <a href="https://github.com/bei666qi-pan/BudgetLoop/releases/latest"><img src="https://img.shields.io/github/v/release/bei666qi-pan/BudgetLoop?display_name=tag&style=for-the-badge" alt="最新版本"></a>
+  <a href="https://github.com/bei666qi-pan/BudgetLoop/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/bei666qi-pan/BudgetLoop/release.yml?style=for-the-badge&label=release" alt="跨平台发布"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/bei666qi-pan/BudgetLoop?style=for-the-badge" alt="MIT 许可证"></a>
+</div>
 
-<p align="center"><strong>面向规划、执行、证据与安全恢复的预算感知 Coding Agent 控制面。</strong></p>
+<div align="center">
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#桌面应用">桌面应用</a> ·
+  <a href="#工作原理">工作原理</a> ·
+  <a href="#架构">架构</a> ·
+  <a href="#开发">开发</a>
+</div>
 
-<p align="center"><a href="#快速开始">快速开始</a> · <a href="#架构">架构</a> · <a href="#安全">安全</a> · <a href="#开发">开发</a> · <a href="#许可证">许可证</a></p>
+<p align="center"><a href="./README.md">English</a> · <strong>简体中文</strong></p>
 
-[![License](https://img.shields.io/github/license/bei666qi-pan/BudgetLoop?style=flat-square)](./LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/bei666qi-pan/BudgetLoop?display_name=tag&style=flat-square)](https://github.com/bei666qi-pan/BudgetLoop/releases/latest)
-[![Windows launcher](https://github.com/bei666qi-pan/BudgetLoop/actions/workflows/windows-launcher.yml/badge.svg)](https://github.com/bei666qi-pan/BudgetLoop/actions/workflows/windows-launcher.yml)
+BudgetLoop 把开放式软件需求转化成可审计的执行闭环：运行真实 Agent、工具和测试；跟踪 Token、时间、调用次数与费用预算；保存证据；在进展停滞时调整策略；并把仍需人工决策的边界明确展示出来。
 
-**语言：** [English](README.md) · 简体中文
+> [!IMPORTANT]
+> BudgetLoop 目前是实验性的自托管系统。请只使用你信任的代码仓库、凭据、模型服务和 Docker 环境。
 
-BudgetLoop 将开放式软件任务转化为可审计的执行闭环：它规划工作、运行 Agent 与工具、读取真实证据、核算资源，并在达到边界时结束或请求人工审批。它的目标是让 Coding Agent 可观察、可控制，而不只是一个对话界面。
+## 最新版本：v0.3.0
 
-> BudgetLoop 目前是实验性的自托管系统。请只在你信任的 Docker 环境、凭据和项目中运行。
+Web、后端、macOS 与 Windows 均由同一个 `v0.3.0` 源码修订构建。桌面启动器只是本地 Docker checkout 的原生宿主，不包含 Docker、你的项目代码、模型凭据或在线 BudgetLoop 服务。
+
+| 使用方式 | 当前版本 | 获取方式 | 前置条件 |
+| --- | --- | --- | --- |
+| **Web** | `0.3.0` | Docker Compose，地址 `http://localhost:3000` | Docker Desktop/Engine + Compose v2 |
+| **macOS 应用** | `0.3.0` | [下载 ZIP](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/BudgetLoop-v0.3.0-macos.zip) | macOS 13+、Docker Desktop、本地 BudgetLoop checkout |
+| **Windows 应用** | `0.3.0` | [下载 MSI](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/BudgetLoop-v0.3.0-windows-x64.msi) | Windows 10/11、Docker Desktop、WebView2、本地 checkout |
+| **后端 / Worker** | `0.3.0` | 包含在 Docker Compose 中 | 源码开发需要 Python 3.12+ |
+
+[版本说明](https://github.com/bei666qi-pan/BudgetLoop/releases/tag/v0.3.0) · [SHA-256 校验和](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/SHA256SUMS) · [全部版本](https://github.com/bei666qi-pan/BudgetLoop/releases)
 
 ## 为什么使用 BudgetLoop？
 
-| 需求 | BudgetLoop 的做法 |
+| 你需要什么 | BudgetLoop 提供什么 |
 | --- | --- |
-| 可以信任的预算 | 在真实模型调用前后原子化预留和结算 Token、调用次数、费用与时间。 |
-| 要证据，不要“表演” | 保存工具输出、测试结果、退出码、耗时、工件和执行事件。 |
-| 自主但可控 | 支持引导式/自主式 Agent Team、显式 Handoff 与审批闸门。 |
-| 清晰的工作区边界 | 使用每 Run 的 Docker 工作区、服务端生成 Worktree 与显式目录授权。 |
-| 可理解的失败 | 显示准备、执行、警告和终态失败，不会把阻塞 Worker 伪装成“正在进行”。 |
+| **可信预算** | 围绕真实模型调用，原子化预留和结算 Token、调用次数、费用与时间。 |
+| **要证据，不要“表演”** | 保存工具输出、测试结果、退出码、耗时、工件、Diff 与生命周期事件。 |
+| **可控的 Agent Team** | 引导式或自主式团队、可并行阶段、显式 Handoff 与人工审批。 |
+| **安全的工作区边界** | 每 Run 的 Docker 工作区、服务端 Git Worktree、显式目录授权和失败关闭。 |
+| **诚实的进度反馈** | 展示工作区/Agent 启动阶段、动画等待状态、有界重试和可操作的终态错误。 |
+| **恢复而不是盲目重试** | 根据确定性进展信号切换策略、回滚、进入最小修复或交付可解释的部分结果。 |
 
 ## 快速开始
 
-### 前置条件
+### 1. 启动最新版 Web 栈
 
-- Docker Desktop 或兼容的 Docker daemon
-- Docker Compose v2
-- 已授权的模型网关配置（默认集成 New API）
-
-## 本地运行
+前置条件：Docker Desktop 或 Docker Engine、Docker Compose v2、Git，以及已授权的模型网关。
 
 ```bash
-git clone https://github.com/bei666qi-pan/BudgetLoop.git
+git clone --branch v0.3.0 https://github.com/bei666qi-pan/BudgetLoop.git
 cd BudgetLoop
 cp .env.example .env
 # 编辑 .env，替换每一个 replace-with-* 值。
-docker compose up -d
+docker compose up -d --build
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)。首次配置 New API 时：在 [http://localhost:3001](http://localhost:3001) 创建管理员、上游渠道和网关 Token，将 Token 写入 `.env` 的 `AI_GATEWAY_API_KEY`，然后执行：
+打开 [http://localhost:3000](http://localhost:3000)。首次使用时，可在 [http://localhost:3001](http://localhost:3001) 的 New API 控制台创建管理员、上游渠道、模型别名和 Token。
 
-```bash
-docker compose up -d control-plane worker
-```
-
-源代码更新后可重新构建应用服务：
+把网关 Token 写入 `.env` 后刷新应用服务：
 
 ```bash
 docker compose up -d --build control-plane worker web
 ```
 
-### 桌面启动器
+### 2. 创建 Agent Team
 
-- **macOS：**执行 `./desktop/build.sh`，再打开 `./BudgetLoop.app`。
-- **Windows：**从[最新 Release](https://github.com/bei666qi-pan/BudgetLoop/releases/latest)下载 MSI。需要 Docker Desktop、Microsoft Edge WebView2 Runtime，以及包含 `docker-compose.yml` 的本地 checkout。
+1. 在首页描述你希望交付的结果；
+2. 检查建议的团队、执行引擎、验收条件、预算和文件权限；
+3. 点击“确认并启动”。仅生成草稿不会创建任务，也不会消耗执行预算；
+4. 根据真实状态跟踪启动过程：等待调度 → 准备工作区 → 启动 Agent → 运行中，或查看带恢复动作的明确失败。
 
-启动器会保留 `.env`、数据服务和 Docker 卷，只重建 BudgetLoop 的应用服务。
+## 桌面应用
 
-## 执行闭环
+两个启动器都只刷新无状态的 `control-plane`、`worker` 和 `web` 服务；会保留 `.env`、PostgreSQL、Valkey、New API 与 Docker 卷。
+
+### macOS
+
+1. 将仓库 clone 或更新到 `v0.3.0` tag；
+2. 下载 `BudgetLoop-v0.3.0-macos.zip` 并解压到仓库根目录，或执行 `./desktop/build.sh` 本地构建；
+3. 启动 Docker Desktop，然后打开 `BudgetLoop.app`。
+
+当前归档采用 ad-hoc 签名保证包完整性，但尚未经过 Apple notarization。macOS 首次启动时可能需要手动确认“打开”。
+
+### Windows
+
+1. 将仓库 clone 或更新到 `v0.3.0` tag；
+2. 从 Release 安装 `BudgetLoop-v0.3.0-windows-x64.msi`；
+3. 启动 Docker Desktop，打开 BudgetLoop，并在提示时选择包含 `docker-compose.yml` 的 checkout。
+
+当前 MSI 由 CI 构建，但尚未进行 Authenticode 签名，Windows SmartScreen 可能显示“未知发布者”。应用依赖 Microsoft Edge WebView2 Runtime；当前 Windows 通常已自带该组件。
+
+## 工作原理
 
 ```text
 描述目标 → 规划工作 → 运行模型与工具 → 检查证据 → 调整或结束
-     ↑                                             ↓
-     └──── 审批、预算限制、回滚和最终报告 ───────────┘
+     ↑                                                   ↓
+     └──── 审批、预算、回滚、Handoff 与最终报告 ─────────┘
 ```
 
-1. 通过引导配置创建任务或 Agent Team；
-2. 审查执行引擎、工作区权限、预算和验收条件；
-3. 启动运行。BudgetLoop 会创建工作区、建立 Agent 对话、记录执行证据并更新生命周期；
-4. 审查报告、工件、测试、预算使用和显式 Handoff。
+每次 Run 都有持久化任务、预算、执行时间线、工作区、审批状态、测试证据和最终报告。BudgetLoop 不会把模型声称的“完成”当作真实验收证据。
 
-启动状态会如实展示：等待调度、准备工作区、工作区已就绪/正在启动 Agent、运行中或失败。启动失败会保留记录的工作区诊断，便于修复后有意识地重试。
+启动过程有界且可观察。工作区或 Agent 对话正在准备时，UI 会显示当前阶段和等待状态；重复创建失败会转化为保留诊断信息的终态错误，不会让操作员一直面对没有解释的 Spinner。
 
 ## 架构
 
 ```mermaid
 graph TD
-    UI[Next.js UI] -->|REST + SSE| CP[FastAPI 控制面]
-    CP --> PG[(PostgreSQL)]
-    PG --> WK[Dramatiq Worker]
-    WK -->|创建| WS[Docker 工作区]
-    WK -->|Agent SDK| AS[OpenHands Agent Server]
-    AS -->|模型调用| GW[New API 网关]
-    GW --> LLM[已授权模型提供商]
+    UI["Next.js Web / 原生桌面宿主"] -->|"REST + SSE"| CP["FastAPI 控制面"]
+    CP --> PG[("PostgreSQL 唯一事实来源")]
+    PG --> WK["Dramatiq + Valkey Worker"]
+    WK -->|"创建"| WS["每 Run 的 Docker 工作区"]
+    WK -->|"有界 Agent Step"| AS["OpenHands Agent Server / CLI 引擎"]
+    AS -->|"服务端凭据"| GW["New API / 兼容网关"]
+    GW --> LLM["已授权模型服务"]
 ```
 
 | 层级 | 技术 |
 | --- | --- |
-| Web | Next.js 15、TypeScript、Tailwind CSS |
+| 操作界面 | Next.js 15、React 19、TypeScript、Tailwind CSS、SSE |
 | 控制面 | FastAPI、SQLAlchemy、PostgreSQL 16 |
-| 队列 | Dramatiq 与 Valkey |
+| 队列与瞬态状态 | Dramatiq、Valkey |
 | Agent 运行时 | OpenHands Software Agent SDK 与支持的 CLI 引擎 |
-| 工作区 | 每 Run 的 Docker 容器和可选的服务端 Git Worktree |
-| 网关 | 默认 QuantumNous New API；兼容 LiteLLM profile |
+| 执行隔离 | 每 Run 的 Docker 工作区；可选的服务端 Git Worktree |
+| 模型网关 | 默认 QuantumNous New API；兼容服务端 Profile |
+| 桌面端 | macOS 使用 Swift/AppKit；Windows 使用 Rust/Tauri/WebView2 |
 
-## 工作区与安全模型
+## 安全模型
 
-- **隔离工作区（默认）：**每个 Run 在独立 Docker 工作区中执行，不会写入宿主项目。
-- **直接访问项目：**必须提供已校验的绝对路径、明确风险确认和最终确认；完全访问的 Agent Team 使用服务端生成 Git Worktree 与兼容的服务端引擎。
-- **绝不静默降级：**挂载、Worktree 或 Agent Server 启动失败时，Run 会以工作区错误失败，不会在另一目录继续运行。
-- **审批闸门：**高风险写入、命令和网络操作可要求人工决策。
+- **默认隔离工作区：**每次 Run 只写入自己的 Docker 工作区；
+- **直接项目访问必须显式授权：**需要规范化绝对路径、风险确认、最终确认与兼容引擎；Agent Team 使用独立的服务端 Worktree；
+- **绝不静默降级：**挂载、Worktree 或 Agent 启动失败时停止 Run，不会换到其他目录执行；
+- **凭据只在服务端：**浏览器 bundle 与响应不会获得网关或模型供应商密钥；
+- **风险操作可审批：**写入、命令和网络操作可以要求操作员确认。
 
 ## 网关配置
 
-默认 compose 栈包含 [New API](https://github.com/QuantumNous/new-api)，地址为 `http://localhost:3001`。在其控制台创建已授权上游渠道和网关 Token，然后在 `.env` 中填写：
+默认栈包含 [QuantumNous New API](https://github.com/QuantumNous/new-api)。创建已授权渠道与 Token 后配置：
 
 ```dotenv
 AI_GATEWAY_TYPE=new-api
@@ -118,45 +152,63 @@ AI_GATEWAY_API_KEY=replace-with-your-gateway-token
 AI_GATEWAY_RECOMMENDATION_MODEL=budgetloop-recommendation
 ```
 
-修改网关配置后请重启 `control-plane` 和 `worker`。网关凭据只保留在服务端，浏览器不会获得它们。
+不要提交 `.env`，也不要在截图或 Issue 中泄露凭据。
 
 ## 开发
 
 ```bash
 # 后端
-cd backend && .venv/bin/pytest tests/ -q
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
 
-# 前端
-cd web && npm test && npm run build
+# Web（另一个终端）
+cd web
+npm ci
+npm test
+npm run build
+
+# macOS 启动器
+./desktop/build.sh
+
+# Windows 启动器（在 Windows 上）
+cd desktop/windows
+npm ci
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run tauri -- build --bundles msi
 ```
 
-部分后端集成测试需要 Docker 和 testcontainers。演示流程见 [`docs/demo-guide.md`](./docs/demo-guide.md)。
+检查全部发布入口是否与根版本一致：
+
+```bash
+python3 scripts/check_release_version.py
+```
 
 ```text
-backend/    FastAPI 控制面、Worker、编排、预算和策略
-web/        Next.js 操作界面
-desktop/    macOS 与 Windows 启动器
-openspec/   版本化行为规范与变更提案
-demo/       示例项目
+backend/    API、编排、预算、策略和 Worker
+web/        浏览器操作界面
+desktop/    macOS 与 Windows 原生启动器
+openspec/   版本化产品要求与变更历史
+docs/       演示与发布文档
 ```
 
-## 安全
+重要行为与架构变更使用仓库的 [OpenSpec 工作流](./openspec/)。演示流程见 [docs/demo-guide.md](./docs/demo-guide.md)。
 
-- 不要把 `.env`、网关 Token 或供应商凭据提交到仓库或截图中；
-- 除非确实需要直接编辑，否则使用隔离工作区；授予访问前请复查目录与 Worktree 策略；
-- Docker socket 属于高权限能力；生产环境应采用更严格的 Docker 边界；
-- 第三方组件声明见 [NOTICE](./NOTICE)。
+## 发布完整性
 
-## 路线图
+`v0.3.0` tag 触发同一条跨平台工作流。只有版本一致性、后端测试、Web 测试/构建、macOS bundle 版本/签名、Windows 启动器测试和 MSI 构建全部通过后，才会发布桌面工件。可使用 `SHA256SUMS` 验证下载文件：
 
-- 每 Run 的网关配额集成
-- 可复现 A/B/C 证据的评测套件
-- 更完善的部署加固与 Worker 扩展指引
+```bash
+shasum -a 256 -c SHA256SUMS   # macOS
+sha256sum -c SHA256SUMS       # Linux / Git Bash
+```
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request。请保持改动聚焦，为行为改变补充测试；对重要产品或架构改动，请同步更新 [`openspec/`](./openspec/) 中的相关规范。
+欢迎提交 Issue 与聚焦的 Pull Request。行为变化需要测试；重要产品或架构变化需要同步相关 OpenSpec 要求。
 
 ## 许可证
 
-BudgetLoop 使用 [MIT License](./LICENSE) 发布。第三方组件保留各自许可证，详见 [NOTICE](./NOTICE)。
+BudgetLoop 使用 [MIT License](./LICENSE)。第三方组件保留各自许可证，详见 [NOTICE](./NOTICE)。

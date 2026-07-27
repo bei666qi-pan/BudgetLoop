@@ -1,6 +1,6 @@
 [project]
 name = "budgetloop-backend"
-version = "0.2.0"
+version = "0.3.0"
 description = "BudgetLoop: budget-aware self-healing coding agent (control plane + worker)"
 requires-python = ">=3.12"
 dependencies = [
