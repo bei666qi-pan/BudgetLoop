@@ -1,6 +1,6 @@
 [project]
 name = "budgetloop-backend"
-version = "0.3.0"
+version = "0.3.1"
 description = "BudgetLoop: budget-aware self-healing coding agent (control plane + worker)"
 requires-python = ">=3.12"
 dependencies = [
@@ -25,7 +25,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "litellm>=1.93,<2",
     "pytest>=8.2",
+    "pytest-asyncio>=1.4,<2",
     "pytest-cov>=5.0",
     "ruff>=0.5",
     "mypy>=1.10",

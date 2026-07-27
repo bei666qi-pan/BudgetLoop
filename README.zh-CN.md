@@ -25,18 +25,18 @@ BudgetLoop 把开放式软件需求转化成可审计的执行闭环：运行真
 > [!IMPORTANT]
 > BudgetLoop 目前是实验性的自托管系统。请只使用你信任的代码仓库、凭据、模型服务和 Docker 环境。
 
-## 最新版本：v0.3.0
+## 最新版本：v0.3.1
 
-Web、后端、macOS 与 Windows 均由同一个 `v0.3.0` 源码修订构建。桌面启动器只是本地 Docker checkout 的原生宿主，不包含 Docker、你的项目代码、模型凭据或在线 BudgetLoop 服务。
+Web、后端、macOS 与 Windows 均由同一个 `v0.3.1` 源码修订构建。桌面启动器只是本地 Docker checkout 的原生宿主，不包含 Docker、你的项目代码、模型凭据或在线 BudgetLoop 服务。
 
 | 使用方式 | 当前版本 | 获取方式 | 前置条件 |
 | --- | --- | --- | --- |
-| **Web** | `0.3.0` | Docker Compose，地址 `http://localhost:3000` | Docker Desktop/Engine + Compose v2 |
-| **macOS 应用** | `0.3.0` | [下载 ZIP](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/BudgetLoop-v0.3.0-macos.zip) | macOS 13+、Docker Desktop、本地 BudgetLoop checkout |
-| **Windows 应用** | `0.3.0` | [下载 MSI](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/BudgetLoop-v0.3.0-windows-x64.msi) | Windows 10/11、Docker Desktop、WebView2、本地 checkout |
-| **后端 / Worker** | `0.3.0` | 包含在 Docker Compose 中 | 源码开发需要 Python 3.12+ |
+| **Web** | `0.3.1` | Docker Compose，地址 `http://localhost:3000` | Docker Desktop/Engine + Compose v2 |
+| **macOS 应用** | `0.3.1` | [下载 ZIP](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.1/BudgetLoop-v0.3.1-macos.zip) | macOS 13+、Docker Desktop、本地 BudgetLoop checkout |
+| **Windows 应用** | `0.3.1` | [下载 MSI](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.1/BudgetLoop-v0.3.1-windows-x64.msi) | Windows 10/11、Docker Desktop、WebView2、本地 checkout |
+| **后端 / Worker** | `0.3.1` | 包含在 Docker Compose 中 | 源码开发需要 Python 3.12+ |
 
-[版本说明](https://github.com/bei666qi-pan/BudgetLoop/releases/tag/v0.3.0) · [SHA-256 校验和](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/SHA256SUMS) · [全部版本](https://github.com/bei666qi-pan/BudgetLoop/releases)
+[版本说明](https://github.com/bei666qi-pan/BudgetLoop/releases/tag/v0.3.1) · [SHA-256 校验和](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.1/SHA256SUMS) · [全部版本](https://github.com/bei666qi-pan/BudgetLoop/releases)
 
 ## 为什么使用 BudgetLoop？
 
@@ -56,7 +56,7 @@ Web、后端、macOS 与 Windows 均由同一个 `v0.3.0` 源码修订构建。�
 前置条件：Docker Desktop 或 Docker Engine、Docker Compose v2、Git，以及已授权的模型网关。
 
 ```bash
-git clone --branch v0.3.0 https://github.com/bei666qi-pan/BudgetLoop.git
+git clone --branch v0.3.1 https://github.com/bei666qi-pan/BudgetLoop.git
 cd BudgetLoop
 cp .env.example .env
 # 编辑 .env，替换每一个 replace-with-* 值。
@@ -84,16 +84,16 @@ docker compose up -d --build control-plane worker web
 
 ### macOS
 
-1. 将仓库 clone 或更新到 `v0.3.0` tag；
-2. 下载 `BudgetLoop-v0.3.0-macos.zip` 并解压到仓库根目录，或执行 `./desktop/build.sh` 本地构建；
+1. 将仓库 clone 或更新到 `v0.3.1` tag；
+2. 下载 `BudgetLoop-v0.3.1-macos.zip` 并解压到仓库根目录，或执行 `./desktop/build.sh` 本地构建；
 3. 启动 Docker Desktop，然后打开 `BudgetLoop.app`。
 
 当前归档采用 ad-hoc 签名保证包完整性，但尚未经过 Apple notarization。macOS 首次启动时可能需要手动确认“打开”。
 
 ### Windows
 
-1. 将仓库 clone 或更新到 `v0.3.0` tag；
-2. 从 Release 安装 `BudgetLoop-v0.3.0-windows-x64.msi`；
+1. 将仓库 clone 或更新到 `v0.3.1` tag；
+2. 从 Release 安装 `BudgetLoop-v0.3.1-windows-x64.msi`；
 3. 启动 Docker Desktop，打开 BudgetLoop，并在提示时选择包含 `docker-compose.yml` 的 checkout。
 
 当前 MSI 由 CI 构建，但尚未进行 Authenticode 签名，Windows SmartScreen 可能显示“未知发布者”。应用依赖 Microsoft Edge WebView2 Runtime；当前 Windows 通常已自带该组件。
@@ -198,7 +198,7 @@ docs/       演示与发布文档
 
 ## 发布完整性
 
-`v0.3.0` tag 触发同一条跨平台工作流。只有版本一致性、后端测试、Web 测试/构建、macOS bundle 版本/签名、Windows 启动器测试和 MSI 构建全部通过后，才会发布桌面工件。可使用 `SHA256SUMS` 验证下载文件：
+`v0.3.1` tag 触发同一条跨平台工作流。只有版本一致性、后端测试、Web 测试/构建、macOS bundle 版本/签名、Windows 启动器测试和 MSI 构建全部通过后，才会发布桌面工件。可使用 `SHA256SUMS` 验证下载文件：
 
 ```bash
 shasum -a 256 -c SHA256SUMS   # macOS

@@ -1,6 +1,6 @@
 [package]
 name = "budgetloop-windows-launcher"
-version = "0.3.0"
+version = "0.3.1"
 description = "Native Windows launcher for a local BudgetLoop checkout"
 authors = ["BudgetLoop"]
 edition = "2021"

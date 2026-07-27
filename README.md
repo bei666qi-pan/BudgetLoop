@@ -25,18 +25,18 @@ BudgetLoop turns an open-ended software request into an auditable operating loop
 > [!IMPORTANT]
 > BudgetLoop is an experimental, self-hosted system. Use only repositories, credentials, model providers, and Docker environments you trust.
 
-## Latest release: v0.3.0
+## Latest release: v0.3.1
 
-Web, backend, macOS, and Windows are built from the same `v0.3.0` source revision. Desktop launchers are native hosts for a local Docker-backed checkout; they do not bundle Docker, your repository, model credentials, or a hosted BudgetLoop service.
+Web, backend, macOS, and Windows are built from the same `v0.3.1` source revision. Desktop launchers are native hosts for a local Docker-backed checkout; they do not bundle Docker, your repository, model credentials, or a hosted BudgetLoop service.
 
 | Surface | Current version | Delivery | Requirements |
 | --- | --- | --- | --- |
-| **Web** | `0.3.0` | Docker Compose at `http://localhost:3000` | Docker Desktop/Engine + Compose v2 |
-| **macOS app** | `0.3.0` | [Download ZIP](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/BudgetLoop-v0.3.0-macos.zip) | macOS 13+, Docker Desktop, local BudgetLoop checkout |
-| **Windows app** | `0.3.0` | [Download MSI](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/BudgetLoop-v0.3.0-windows-x64.msi) | Windows 10/11, Docker Desktop, WebView2, local checkout |
-| **Backend / worker** | `0.3.0` | Included in Docker Compose | Python 3.12+ for source development |
+| **Web** | `0.3.1` | Docker Compose at `http://localhost:3000` | Docker Desktop/Engine + Compose v2 |
+| **macOS app** | `0.3.1` | [Download ZIP](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.1/BudgetLoop-v0.3.1-macos.zip) | macOS 13+, Docker Desktop, local BudgetLoop checkout |
+| **Windows app** | `0.3.1` | [Download MSI](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.1/BudgetLoop-v0.3.1-windows-x64.msi) | Windows 10/11, Docker Desktop, WebView2, local checkout |
+| **Backend / worker** | `0.3.1` | Included in Docker Compose | Python 3.12+ for source development |
 
-[Release notes](https://github.com/bei666qi-pan/BudgetLoop/releases/tag/v0.3.0) · [SHA-256 checksums](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.0/SHA256SUMS) · [All releases](https://github.com/bei666qi-pan/BudgetLoop/releases)
+[Release notes](https://github.com/bei666qi-pan/BudgetLoop/releases/tag/v0.3.1) · [SHA-256 checksums](https://github.com/bei666qi-pan/BudgetLoop/releases/download/v0.3.1/SHA256SUMS) · [All releases](https://github.com/bei666qi-pan/BudgetLoop/releases)
 
 ## Why BudgetLoop?
 
@@ -56,7 +56,7 @@ Web, backend, macOS, and Windows are built from the same `v0.3.0` source revisio
 Prerequisites: Docker Desktop or Docker Engine, Docker Compose v2, Git, and an authorized model gateway.
 
 ```bash
-git clone --branch v0.3.0 https://github.com/bei666qi-pan/BudgetLoop.git
+git clone --branch v0.3.1 https://github.com/bei666qi-pan/BudgetLoop.git
 cd BudgetLoop
 cp .env.example .env
 # Replace every replace-with-* value in .env.
@@ -84,16 +84,16 @@ Both launchers refresh only the stateless `control-plane`, `worker`, and `web` s
 
 ### macOS
 
-1. Clone or update the repository to tag `v0.3.0`.
-2. Download and extract `BudgetLoop-v0.3.0-macos.zip` into the repository root, or build it locally with `./desktop/build.sh`.
+1. Clone or update the repository to tag `v0.3.1`.
+2. Download and extract `BudgetLoop-v0.3.1-macos.zip` into the repository root, or build it locally with `./desktop/build.sh`.
 3. Start Docker Desktop and open `BudgetLoop.app`.
 
 The current archive is ad-hoc signed for integrity but is not Apple-notarized. macOS may require an explicit **Open** confirmation for the first launch.
 
 ### Windows
 
-1. Clone or update the repository to tag `v0.3.0`.
-2. Install `BudgetLoop-v0.3.0-windows-x64.msi` from the release.
+1. Clone or update the repository to tag `v0.3.1`.
+2. Install `BudgetLoop-v0.3.1-windows-x64.msi` from the release.
 3. Start Docker Desktop, open BudgetLoop, and choose the checkout containing `docker-compose.yml` when prompted.
 
 The current MSI is CI-built but not Authenticode-signed. Windows SmartScreen may show an unrecognized-publisher warning. Microsoft Edge WebView2 Runtime is required and is normally included with current Windows releases.
@@ -198,7 +198,7 @@ Meaningful behavior and architecture changes use the repository's [OpenSpec work
 
 ## Release integrity
 
-The `v0.3.0` tag runs one cross-platform workflow. It verifies version parity, backend tests, Web tests/build, macOS bundle version/signature, Windows launcher tests, and MSI creation before publishing either desktop asset. Compare downloads with `SHA256SUMS`:
+The `v0.3.1` tag runs one cross-platform workflow. It verifies version parity, backend tests, Web tests/build, macOS bundle version/signature, Windows launcher tests, and MSI creation before publishing either desktop asset. Compare downloads with `SHA256SUMS`:
 
 ```bash
 shasum -a 256 -c SHA256SUMS   # macOS

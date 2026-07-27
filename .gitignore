@@ -20,6 +20,8 @@ out/
 
 # Runtime data
 artifacts/
+!backend/app/artifacts/
+!backend/app/artifacts/*.py
 workspace-data/
 .budgetloop/
 *.log
