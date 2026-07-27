@@ -20,5 +20,5 @@
 
 - [x] 4.1 Run focused and full backend tests, frontend tests/build, version parity, OpenSpec validation, and macOS launcher tests/build checks.
 - [x] 4.2 Perform the required post-implementation frontend design review, apply verified targeted corrections, and recheck the corrected UI.
-- [ ] 4.3 Sync the completed specification and update GitHub `main` without force-pushing.
-- [ ] 4.4 Tag `v0.3.1`, verify GitHub assets/checksums and the local `BudgetLoop.app`, then archive the completed change on `main`.
+- [x] 4.3 Sync the completed specification and update GitHub `main` without force-pushing.
+- [x] 4.4 Tag `v0.3.1`, verify GitHub assets/checksums and the local `BudgetLoop.app`, then archive the completed change on `main`.
