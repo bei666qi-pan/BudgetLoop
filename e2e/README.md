@@ -6,6 +6,18 @@ This suite verifies the complete planning path without mocks:
 Chromium -> Next.js same-origin proxy -> FastAPI task-drafts API -> DeepSeek -> schema validation -> rendered review UI
 ```
 
+## Cross-platform coverage
+
+BudgetLoop Web, macOS, and Windows use the same Docker-backed `web`, `control-plane`, and AI gateway services. The real-model browser E2E therefore validates the shared application chain used by all three surfaces.
+
+| Surface | What this suite validates | Additional platform gate |
+| --- | --- | --- |
+| Web | Next.js UI, same-origin BFF, FastAPI planning API, real DeepSeek response, schema validation, and rendered AI provenance | `npm test` and `npm run build` in `web/` |
+| macOS | The same Web/control-plane/AI chain launched by the native AppKit host | `./desktop/build.sh`, bundle version parity, and `codesign --verify` in `release.yml` |
+| Windows | The same Web/control-plane/AI chain launched by the Tauri/WebView2 host | Rust tests and MSI creation in `release.yml` |
+
+This test does not replace native packaging checks. A release is considered cross-platform verified only when the real AI E2E and the existing Web, macOS, and Windows release gates all pass.
+
 ## Required secret
 
 Create a GitHub Actions repository secret named `DEEPSEEK_API_KEY`. The workflow passes it only through the runner environment and a mode-0600 temporary `.env` file. The value is never committed, printed, uploaded, or returned to the browser.
