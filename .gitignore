@@ -38,6 +38,8 @@ desktop/build/
 # Test
 htmlcov/
 .coverage
+playwright-report/
+test-results/
 
 # Reproducible shallow upstream engine checkouts (see pinned manifest + fetch script)
 vendor/agent-engines/openhands/
