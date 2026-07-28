@@ -44,8 +44,9 @@ test.describe("real DeepSeek planning chain", () => {
     test.setTimeout(180_000);
 
     const statusResponse = await request.get("/api/control/api/ai-gateway/status");
-    expect(statusResponse.status(), await statusResponse.text()).toBe(200);
-    const status = (await statusResponse.json()) as GatewayStatus;
+    const statusBody = await statusResponse.text();
+    expect(statusResponse.status(), statusBody).toBe(200);
+    const status = JSON.parse(statusBody) as GatewayStatus;
 
     expect(status).toMatchObject({
       type: "compatible",
@@ -79,8 +80,9 @@ test.describe("real DeepSeek planning chain", () => {
       page.getByRole("button", { name: "生成建议配置" }).click(),
     ]);
 
-    expect(draftResponse.status(), await draftResponse.text()).toBe(200);
-    const draft = (await draftResponse.json()) as TaskDraft;
+    const draftBody = await draftResponse.text();
+    expect(draftResponse.status(), draftBody).toBe(200);
+    const draft = JSON.parse(draftBody) as TaskDraft;
 
     expect(draft.schema_version).toBe(1);
     expect(draft.state).toBe("ready");
