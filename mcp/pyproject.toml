@@ -1,0 +1,17 @@
+[project]
+name = "budgetloop-mcp"
+version = "0.3.1"
+description = "BudgetLoop MCP Server — 让 AI Agent 通过 MCP 协议操控 BudgetLoop"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.0",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+]
+
+[project.scripts]
+budgetloop-mcp = "server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

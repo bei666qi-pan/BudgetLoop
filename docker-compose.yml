@@ -231,6 +231,17 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET:-budgetloop-artifacts}
 
+  mcp:
+    build:
+      context: ./mcp
+    environment:
+      BUDGETLOOP_API_URL: http://control-plane:8000
+      BUDGETLOOP_API_TOKEN: ${API_TOKEN}
+    ports:
+      - "${MCP_PORT:-3100}:3100"
+    depends_on:
+      - control-plane
+
   # ===== 可选观测栈：docker compose --profile observability up =====
   otel-collector:
     profiles: ["observability"]

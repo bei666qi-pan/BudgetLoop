@@ -1,0 +1,180 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BudgetLoop Control Plane",
+    "version": "0.3.1",
+    "description": "预算感知 Coding Agent 控制面板 — REST API。所有 /api 端点（除 /api/health 和 /api/runtime/ai/*）均需 Bearer Token 鉴权。"
+  },
+  "servers": [
+    {"url": "http://localhost:8000", "description": "本地开发"},
+    {"url": "http://control-plane:8000", "description": "Docker Compose 内部"}
+  ],
+  "security": [{"bearerAuth": []}],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "BudgetSpec": {
+        "type": "object",
+        "properties": {
+          "max_total_tokens": {"type": "integer", "default": 100000, "minimum": 1},
+          "max_wall_time_seconds": {"type": "integer", "default": 1200, "minimum": 1},
+          "max_active_runtime_seconds": {"type": "integer", "default": 600, "minimum": 1},
+          "max_llm_calls": {"type": "integer", "default": 20, "minimum": 1},
+          "max_cost": {"type": "number", "default": 5.0, "exclusiveMinimum": 0},
+          "max_parallel_llm_calls": {"type": "integer", "default": 2, "minimum": 1}
+        }
+      },
+      "CreateTaskRequest": {
+        "type": "object",
+        "required": ["name", "workdir"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 200},
+          "description": {"type": "string", "default": ""},
+          "workdir": {"type": "string", "minLength": 1, "maxLength": 500},
+          "acceptance_criteria": {"type": "string"},
+          "template": {"type": "string", "default": "fix_bug"},
+          "require_approval": {"type": "boolean", "default": true},
+          "strategy": {"type": "string", "default": "dynamic"},
+          "budget": {"$ref": "#/components/schemas/BudgetSpec"},
+          "project_dir": {"type": "string", "maxLength": 500},
+          "folder_access": {"type": "string", "default": "isolated"}
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["health"],
+        "summary": "健康检查",
+        "security": [],
+        "responses": {"200": {"description": "OK"}}
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "tags": ["tasks"],
+        "summary": "列出所有任务",
+        "responses": {"200": {"description": "任务列表"}}
+      },
+      "post": {
+        "tags": ["tasks"],
+        "summary": "创建任务并入队首个 Run",
+        "requestBody": {
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateTaskRequest"}}}
+        },
+        "responses": {"201": {"description": "已创建"}}
+      }
+    },
+    "/api/tasks/{task_id}": {
+      "delete": {
+        "tags": ["tasks"],
+        "summary": "删除已终止的独立任务",
+        "parameters": [{"name": "task_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"204": {"description": "已删除"}}
+      }
+    },
+    "/api/tasks/{task_id}/runs": {
+      "post": {
+        "tags": ["runs"],
+        "summary": "为已有任务创建新 Run",
+        "parameters": [{"name": "task_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"201": {"description": "已创建"}}
+      }
+    },
+    "/api/runs/{run_id}": {
+      "get": {
+        "tags": ["runs"],
+        "summary": "获取 Run 聚合详情",
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"200": {"description": "Run 详情"}}
+      }
+    },
+    "/api/runs/{run_id}/pause": {
+      "post": {
+        "tags": ["runs"],
+        "summary": "暂停运行",
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"200": {"description": "已暂停"}}
+      }
+    },
+    "/api/runs/{run_id}/cancel": {
+      "post": {
+        "tags": ["runs"],
+        "summary": "取消运行",
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"200": {"description": "已取消"}}
+      }
+    },
+    "/api/runs/{run_id}/events": {
+      "get": {
+        "tags": ["observations"],
+        "summary": "获取执行事件",
+        "parameters": [
+          {"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "after_seq", "in": "query", "schema": {"type": "integer", "default": 0}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 500}}
+        ],
+        "responses": {"200": {"description": "事件列表"}}
+      }
+    },
+    "/api/runs/{run_id}/report": {
+      "get": {
+        "tags": ["observations"],
+        "summary": "获取最终报告",
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"200": {"description": "报告"}}
+      }
+    },
+    "/api/runs/{run_id}/budget": {
+      "get": {
+        "tags": ["observations"],
+        "summary": "获取预算详情",
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"200": {"description": "预算详情"}}
+      }
+    },
+    "/api/approvals/{approval_id}/decide": {
+      "post": {
+        "tags": ["approvals"],
+        "summary": "审批决策",
+        "parameters": [{"name": "approval_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "requestBody": {
+          "content": {"application/json": {"schema": {"type": "object", "properties": {"action": {"type": "string", "enum": ["approve", "reject", "modify"]}, "note": {"type": "string"}}}}}
+        },
+        "responses": {"200": {"description": "已决策"}}
+      }
+    },
+    "/api/ai-gateway/status": {
+      "get": {
+        "tags": ["ai-gateway"],
+        "summary": "获取 AI 网关状态",
+        "responses": {"200": {"description": "网关状态"}}
+      }
+    },
+    "/api/work-containers": {
+      "get": {
+        "tags": ["work-containers"],
+        "summary": "列出工作容器",
+        "parameters": [
+          {"name": "lifecycle", "in": "query", "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50}},
+          {"name": "offset", "in": "query", "schema": {"type": "integer", "default": 0}}
+        ],
+        "responses": {"200": {"description": "容器列表"}}
+      }
+    },
+    "/api/execution-engines": {
+      "get": {
+        "tags": ["execution-engines"],
+        "summary": "列出执行引擎",
+        "responses": {"200": {"description": "引擎列表"}}
+      }
+    }
+  }
+}

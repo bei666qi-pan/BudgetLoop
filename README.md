@@ -83,6 +83,80 @@ Next.js Web UI  →  FastAPI 控制面  →  PostgreSQL + Valkey + Dramatiq
 - **凭据在服务端** — 前端永不接触网关或模型密钥
 - **可审批** — 高风险写入、命令、网络操作可要求人工确认
 
+## AI 操控（MCP Server）
+
+BudgetLoop 内置 MCP Server，让 AI Coding Agent（Kimi Code、Claude Desktop、Cursor 等）可以直接操控 BudgetLoop 的任务、运行、审批、报告等。
+
+### 方式一：Docker Compose（推荐）
+
+MCP Server 随 `docker compose up -d --build` 自动启动在 `localhost:3100`。
+
+在你的 AI Agent 配置中添加：
+
+**Kimi Code**（`.kimi/config.toml`）：
+```toml
+[mcp_servers.budgetloop]
+transport = "sse"
+url = "http://localhost:3100/sse"
+```
+
+**Claude Desktop**（`claude_desktop_config.json`）：
+```json
+{
+  "mcpServers": {
+    "budgetloop": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--network", "host", "-e", "BUDGETLOOP_API_URL=http://localhost:8000", "-e", "BUDGETLOOP_API_TOKEN=budgetloop-dev-token", "budgetloop-mcp"]
+    }
+  }
+}
+```
+
+**通用 stdio 模式**（任何支持 MCP 的工具）：
+```json
+{
+  "mcpServers": {
+    "budgetloop": {
+      "command": "python3",
+      "args": ["-m", "mcp.server"],
+      "cwd": "/path/to/BudgetLoop/mcp",
+      "env": {
+        "BUDGETLOOP_API_URL": "http://localhost:8000",
+        "BUDGETLOOP_API_TOKEN": "budgetloop-dev-token"
+      }
+    }
+  }
+}
+```
+
+### 方式二：独立运行
+
+```bash
+cd mcp && pip install . && budgetloop-mcp --transport sse --port 3100
+```
+
+### 可用工具一览
+
+| 工具 | 说明 |
+|---|---|
+| `create_task` | 创建编码任务（含预算） |
+| `list_tasks` | 列出所有任务 |
+| `get_run` | 获取运行详情 |
+| `pause_run` / `cancel_run` | 控制运行生命周期 |
+| `get_run_events` | 轮询执行事件 |
+| `get_run_report` | 获取最终报告 |
+| `get_budget` | 查看预算消耗 |
+| `decide_approval` | 审批 Agent 高风险操作 |
+| `list_work_containers` | 列出 Agent Team |
+| `get_work_container` | 查看 Team 详情 |
+| `get_ai_gateway_status` | 检查 AI 网关 |
+| `list_execution_engines` | 列出可用引擎 |
+| `health_check` | 健康检查 |
+
+## OpenAPI Spec
+
+静态 OpenAPI 3.1 规范文件位于 [`docs/openapi.json`](./docs/openapi.json)，可供 Cursor、Continue、Copilot 等工具直接消费。
+
 ## 开发
 
 ```bash
@@ -99,8 +173,9 @@ python3 scripts/check_release_version.py
 ```
 backend/   API · 编排 · 预算 · 策略 · Worker
 web/       浏览器操作界面
+mcp/       MCP Server（AI Agent 操控接口）
 openspec/  版本化产品需求与变更
-docs/      发布与演示文档
+docs/      发布文档与 OpenAPI 规范
 ```
 
 ## 贡献与许可
