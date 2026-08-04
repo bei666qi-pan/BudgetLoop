@@ -21,16 +21,16 @@ The authenticated web API SHALL accept a browser-selected folder only as a bound
 - **WHEN** the file count, a single file size or aggregate bytes exceed the configured limit
 - **THEN** the API stops processing, returns a readable bounded-upload error and removes the partial upload
 
-### Requirement: Browser upload and native access remain distinct
-The frontend SHALL label browser selection as uploading an isolated project copy and SHALL reserve direct-project/full-access wording for the macOS native folder bridge.
+### Requirement: Browser upload and manual full access remain distinct
+The frontend SHALL label browser selection as uploading an isolated project copy and allow manual absolute path entry for full-access mode.
 
-#### Scenario: Native bridge is unavailable
+#### Scenario: Browser invokes upload for isolated mode
 - **WHEN** the operator activates the project-folder action in a normal browser
 - **THEN** the browser opens a folder upload picker, explains that the Agent receives an isolated copy, and does not request or display a host absolute path
 
-#### Scenario: Native bridge is available
-- **WHEN** the same action is used inside the BudgetLoop macOS App
-- **THEN** the existing native folder picker and explicit full-access acknowledgement remain available without first uploading the folder
+#### Scenario: Full access via manual path entry
+- **WHEN** the operator selects 完全访问模式 and types an absolute path
+- **THEN** the form accepts the manual path, validates it on submission alongside acknowledgement, and persists it for direct mount provisioning
 
 ### Requirement: Recoverable upload feedback
 The frontend SHALL expose upload progress or busy state, a success summary, and an actionable error while preserving the user's goal and current draft.

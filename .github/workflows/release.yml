@@ -1,4 +1,4 @@
-name: Cross-platform release
+name: Web release
 
 on:
   push:
@@ -47,88 +47,15 @@ jobs:
         run: npm run build
         working-directory: web
 
-  macos:
-    name: Build macOS app
-    needs: verify
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Verify release version parity
-        run: python scripts/check_release_version.py
-      - name: Build and verify app archive
-        run: |
-          ./desktop/build.sh
-          VERSION="$(tr -d '[:space:]' < VERSION)"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' BudgetLoop.app/Contents/Info.plist)" = "$VERSION"
-          codesign --verify --deep --strict --verbose=2 BudgetLoop.app
-          ditto -x -k "desktop/build/BudgetLoop-v${VERSION}-macos.zip" /tmp/budgetloop-release-check
-          test -x /tmp/budgetloop-release-check/BudgetLoop.app/Contents/MacOS/BudgetLoop
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-macos
-          path: desktop/build/BudgetLoop-v*-macos.zip
-          if-no-files-found: error
-
-  windows:
-    name: Build Windows MSI
-    needs: verify
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: desktop/windows/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Verify release version parity
-        run: python scripts/check_release_version.py
-      - name: Install Windows launcher dependencies
-        run: npm ci
-        working-directory: desktop/windows
-      - name: Test Windows launcher
-        run: cargo test --manifest-path desktop/windows/src-tauri/Cargo.toml
-      - name: Build Windows MSI
-        run: npm run tauri -- build --bundles msi
-        working-directory: desktop/windows
-      - name: Stage versioned MSI
-        shell: pwsh
-        run: |
-          $version = (Get-Content VERSION -Raw).Trim()
-          $msi = Get-ChildItem desktop/windows/src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
-          if (-not $msi) { throw "Windows MSI was not produced" }
-          New-Item -ItemType Directory -Force release-assets | Out-Null
-          Copy-Item $msi.FullName "release-assets/BudgetLoop-v$version-windows-x64.msi"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-windows
-          path: release-assets/*.msi
-          if-no-files-found: error
-
   publish:
     name: Publish GitHub Release
-    needs: [verify, macos, windows]
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: release-*
-          path: release-assets
-          merge-multiple: true
-      - name: Generate checksums
-        run: |
-          cd release-assets
-          sha256sum BudgetLoop-* > SHA256SUMS
-      - name: Publish verified assets
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -136,8 +63,7 @@ jobs:
           NOTES="docs/releases/${TAG}.md"
           test -f "$NOTES"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --clobber
             gh release edit "$TAG" --title "BudgetLoop ${TAG}" --notes-file "$NOTES" --latest
           else
-            gh release create "$TAG" release-assets/* --verify-tag --title "BudgetLoop ${TAG}" --notes-file "$NOTES" --latest
+            gh release create "$TAG" --verify-tag --title "BudgetLoop ${TAG}" --notes-file "$NOTES" --latest
           fi

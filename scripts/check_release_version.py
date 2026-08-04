@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import plistlib
 import sys
 import tomllib
 from pathlib import Path
@@ -33,33 +32,7 @@ def main() -> int:
             "version"
         ],
         "backend/pyproject.toml": read_toml("backend/pyproject.toml")["project"]["version"],
-        "desktop/windows/package.json": read_json("desktop/windows/package.json")["version"],
-        "desktop/windows/package-lock.json": read_json("desktop/windows/package-lock.json")[
-            "version"
-        ],
-        "desktop/windows/package-lock.json root package": read_json(
-            "desktop/windows/package-lock.json"
-        )["packages"][""]["version"],
-        "desktop/windows/src-tauri/Cargo.toml": read_toml(
-            "desktop/windows/src-tauri/Cargo.toml"
-        )["package"]["version"],
-        "desktop/windows/src-tauri/tauri.conf.json": read_json(
-            "desktop/windows/src-tauri/tauri.conf.json"
-        )["version"],
     }
-
-    with (ROOT / "desktop/Info.plist").open("rb") as file:
-        info = plistlib.load(file)
-    expected["desktop/Info.plist short version"] = info["CFBundleShortVersionString"]
-    expected["desktop/Info.plist bundle version"] = info["CFBundleVersion"]
-
-    cargo_lock = read_toml("desktop/windows/src-tauri/Cargo.lock")
-    windows_package = next(
-        package
-        for package in cargo_lock["package"]
-        if package["name"] == "budgetloop-windows-launcher"
-    )
-    expected["desktop/windows/src-tauri/Cargo.lock"] = windows_package["version"]
 
     errors = [f"{name}: {value!r}" for name, value in expected.items() if value != version]
 

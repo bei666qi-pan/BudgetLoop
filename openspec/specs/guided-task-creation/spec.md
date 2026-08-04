@@ -91,11 +91,11 @@ The task creation flow SHALL let the operator optionally name a local project fo
 
 #### Scenario: Folder selection stays in context
 - **WHEN** the operator selects 完全访问模式 on any task-creation surface
-- **THEN** the 选择文件夹 action appears in the same field group as 项目文件夹, the system-selected path is shown read-only in that adjacent field, manual path entry is unavailable, and no global window-toolbar action competes with or obscures this contextual control
+- **THEN** the 选择文件夹 action appears in the same field group as 项目文件夹, the path can be entered manually in that adjacent field, and no global window-toolbar action competes with or obscures this contextual control
 
-#### Scenario: Native folder selection is unavailable in a browser
-- **WHEN** the operator activates 选择文件夹 outside the BudgetLoop macOS App where the native bridge is unavailable
-- **THEN** the form explains that system folder selection requires the macOS App and does not accept a manually typed absolute path as a substitute
+#### Scenario: Full access folder is entered manually
+- **WHEN** the operator selects 完全访问模式 in the browser
+- **THEN** the form accepts a manually typed absolute path and validates it on submission
 
 #### Scenario: Project folder is selected before conversational planning
 - **WHEN** the operator chooses a project folder from the initial conversational goal composer and then generates a suggested configuration

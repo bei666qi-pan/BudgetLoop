@@ -51,17 +51,6 @@ import type {
   WorkspaceAccessSelection,
 } from "@/lib/types";
 
-declare global {
-  interface Window {
-    budgetloopSetProjectDir?: (path: string) => void;
-    webkit?: {
-      messageHandlers?: {
-        budgetloopPickProjectDir?: { postMessage: (value: null) => void };
-      };
-    };
-  }
-}
-
 const EXAMPLES = [
   "修复订单接口并发超扣，并补充回归测试",
   "做一个可安装、可通关的移动解谜游戏试玩版",
@@ -97,7 +86,6 @@ interface ReviewProps {
   onConfirm: () => void;
   projectUpload: ProjectUploadSummary | null;
   onRequestBrowserUpload: () => void;
-  nativePickerAvailable: boolean;
 }
 
 function TaskSetupReview({
@@ -114,7 +102,6 @@ function TaskSetupReview({
   onConfirm,
   projectUpload,
   onRequestBrowserUpload,
-  nativePickerAvailable,
 }: ReviewProps) {
   const enabled = enabledRoles(roles);
   const total = aggregateTeamBudget(roles);
@@ -143,14 +130,8 @@ function TaskSetupReview({
   };
 
   const requestFolder = () => {
-    const bridge = window.webkit?.messageHandlers?.budgetloopPickProjectDir;
-    if (bridge) {
-      setFolderPickerError(null);
-      bridge.postMessage(null);
-    } else {
-      setFolderPickerError(null);
-      onRequestBrowserUpload();
-    }
+    setFolderPickerError(null);
+    onRequestBrowserUpload();
   };
 
   return (
@@ -195,7 +176,7 @@ function TaskSetupReview({
           <legend className="px-1 text-sm font-semibold">文件与权限</legend>
           <div className="mt-1 grid gap-3 md:grid-cols-2">
             <label className={`flex cursor-pointer items-start gap-3 rounded-xl border bg-white p-4 ${access.folder_access === "isolated" ? "border-accent/40 ring-4 ring-accent/5" : "border-border"}`}><input type="radio" name="home-folder-access" checked={access.folder_access === "isolated"} onChange={() => { setFolderPickerError(null); changeAccess({ folder_access: "isolated", project_dir: "" }); }} className="mt-1 h-4 w-4" /><span><strong className="flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-success" />隔离工作区 · 上传副本（推荐）</strong><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">网页上传只复制项目快照，Agent 不会直接改动你的本地文件夹。</span></span></label>
-            <label className={`flex items-start gap-3 rounded-xl border bg-white p-4 ${nativePickerAvailable ? "cursor-pointer" : "cursor-not-allowed opacity-60"} ${access.folder_access === "full_access" ? "border-warning/45 ring-4 ring-warning/10" : "border-border"}`}><input type="radio" name="home-folder-access" checked={access.folder_access === "full_access"} disabled={!nativePickerAvailable} onChange={() => { setFolderPickerError(null); changeAccess({ folder_access: "full_access", project_upload_id: null }); }} className="mt-1 h-4 w-4" /><span><strong className="flex items-center gap-2"><FolderOpen className="h-4 w-4 text-warning" />直接修改项目（macOS App）</strong><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{nativePickerAvailable ? "每个 Agent 使用独立 Git worktree，但会写入项目及 `.git`。" : "网页版不提供本地写入权限；请在 BudgetLoop macOS App 中使用。"}</span></span></label>
+            <label className={`flex cursor-pointer items-start gap-3 rounded-xl border bg-white p-4 ${access.folder_access === "full_access" ? "border-warning/45 ring-4 ring-warning/10" : "border-border"}`}><input type="radio" name="home-folder-access" checked={access.folder_access === "full_access"} onChange={() => { setFolderPickerError(null); changeAccess({ folder_access: "full_access", project_upload_id: null }); }} className="mt-1 h-4 w-4" /><span><strong className="flex items-center gap-2"><FolderOpen className="h-4 w-4 text-warning" />直接修改项目</strong><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">输入本地项目文件夹的绝对路径，Agent 将直接修改其中内容。每个 Agent 使用独立 Git worktree。</span></span></label>
           </div>
 
           {access.folder_access === "isolated" ? <div className="mt-4 flex flex-col gap-3 rounded-lg border border-success/25 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><strong className="flex items-center gap-2 text-sm"><Upload className="h-4 w-4 text-success" />{projectUpload ? `已上传 ${projectUpload.folder_name ?? "项目文件夹"}` : "可上传项目文件夹"}</strong><p className="mt-1 text-xs text-muted-foreground">{projectUpload ? `${projectUpload.file_count} 个文件 · ${(projectUpload.total_bytes / 1024).toFixed(1)} KB；每个 Agent 获得独立副本。` : "普通浏览器只上传隔离副本，不会获得本地写入权限。"}</p></div><button type="button" onClick={onRequestBrowserUpload} className="btn btn-secondary shrink-0"><Upload className="h-4 w-4" />{projectUpload ? "重新上传" : "上传文件夹"}</button></div> : null}
@@ -203,7 +184,7 @@ function TaskSetupReview({
           {access.folder_access === "full_access" ? (
             <div className="mt-4 space-y-3">
               <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-white p-3 text-xs leading-relaxed text-warning"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>完全访问模式</strong>：只授权你选择的项目文件夹，但 Agent 可以直接修改其中所有内容，包括 Git 分支与元数据。</span></div>
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto]"><label><span className="field-label">项目文件夹</span><span className="relative mt-2 block"><Folder className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input id="home-project-dir" value={access.project_dir} readOnly aria-readonly="true" placeholder="尚未选择项目文件夹" className="input-base w-full cursor-default bg-muted/30 pl-10 font-mono text-xs" /></span></label><button type="button" onClick={requestFolder} className="btn btn-secondary self-end"><FolderOpen className="h-4 w-4" />选择文件夹</button></div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]"><label><span className="field-label">项目文件夹</span><span className="relative mt-2 block"><Folder className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input id="home-project-dir" value={access.project_dir} onChange={(e) => { setFolderPickerError(null); onAccessChange({ ...access, project_dir: e.target.value, full_access_acknowledged: false }); }} placeholder="例如：/Users/you/my-project" className="input-base w-full pl-10 font-mono text-xs" /></span></label></div>
               {folderPickerError ? <p role="alert" className="field-error">{folderPickerError}</p> : null}
               <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-warning/25 bg-white p-3"><input type="checkbox" checked={access.full_access_acknowledged} onChange={(event) => onAccessChange({ ...access, full_access_acknowledged: event.target.checked })} className="mt-0.5 h-4 w-4" /><span className="text-xs leading-relaxed"><strong>我确认：</strong>这些 Agent 可以直接修改 <span className="font-mono">{access.project_dir || "所选文件夹"}</span>，包括其中的 `.git`。</span></label>
             </div>
@@ -236,7 +217,6 @@ export function HomeTaskIntake() {
   const [composerFolderPickerError, setComposerFolderPickerError] = useState<string | null>(null);
   const [projectUpload, setProjectUpload] = useState<ProjectUploadSummary | null>(null);
   const [projectUploading, setProjectUploading] = useState(false);
-  const [nativePickerAvailable, setNativePickerAvailable] = useState(false);
   const requestSequence = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
   const creationKey = useRef<string | null>(null);
@@ -248,28 +228,10 @@ export function HomeTaskIntake() {
   useEffect(() => () => activeRequest.current?.abort(), []);
 
   useEffect(() => {
-    setNativePickerAvailable(Boolean(window.webkit?.messageHandlers?.budgetloopPickProjectDir));
-  }, []);
-
-  useEffect(() => {
     if (state === "ready" || state === "needs_input") {
       reviewRef.current?.focus();
     }
   }, [state]);
-
-  useEffect(() => {
-    window.budgetloopSetProjectDir = (path: string) => {
-      setComposerFolderPickerError(null);
-      setProjectUpload(null);
-      setAccess({
-        folder_access: "full_access",
-        project_dir: path,
-        full_access_acknowledged: false,
-        project_upload_id: null,
-      });
-    };
-    return () => { delete window.budgetloopSetProjectDir; };
-  }, []);
 
   useEffect(() => {
     if (access.folder_access === "isolated" && !access.project_upload_id) {
@@ -278,14 +240,8 @@ export function HomeTaskIntake() {
   }, [access.folder_access, access.project_upload_id]);
 
   function requestComposerFolder() {
-    const bridge = window.webkit?.messageHandlers?.budgetloopPickProjectDir;
-    if (bridge) {
-      setComposerFolderPickerError(null);
-      bridge.postMessage(null);
-    } else {
-      setComposerFolderPickerError(null);
-      browserFolderInputRef.current?.click();
-    }
+    setComposerFolderPickerError(null);
+    browserFolderInputRef.current?.click();
   }
 
   async function handleBrowserFolder(files: FileList | null) {
@@ -417,7 +373,7 @@ export function HomeTaskIntake() {
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                     <input ref={browserFolderInputRef} data-testid="browser-folder-input" type="file" multiple hidden aria-hidden="true" tabIndex={-1} {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(event) => void handleBrowserFolder(event.currentTarget.files)} />
-                    <button type="button" onClick={requestComposerFolder} disabled={projectUploading} aria-label={access.project_dir ? `更换项目文件夹，当前 ${access.project_dir}` : projectUpload ? `重新上传项目文件夹，当前 ${projectUpload.folder_name}` : nativePickerAvailable ? "选择项目文件夹" : "上传项目文件夹"} aria-describedby={composerFolderPickerError ? "home-composer-folder-error" : undefined} title={access.project_dir || "macOS App 直接选择；普通浏览器上传隔离副本"} className="btn btn-secondary min-h-10 min-w-0 shrink-0 px-3">{projectUploading ? <BudgetLoopActivityMark compact label="正在上传" /> : <><FolderOpen className="h-4 w-4" /><span className="max-w-52 truncate">{selectedProjectName ?? (nativePickerAvailable ? "选择项目文件夹" : "上传项目文件夹")}</span></>}</button>
+                    <button type="button" onClick={requestComposerFolder} disabled={projectUploading} aria-label={access.project_dir ? `更换项目文件夹，当前 ${access.project_dir}` : projectUpload ? `重新上传项目文件夹，当前 ${projectUpload.folder_name}` : "上传项目文件夹"} aria-describedby={composerFolderPickerError ? "home-composer-folder-error" : undefined} title="上传项目文件夹用于隔离工作区" className="btn btn-secondary min-h-10 min-w-0 shrink-0 px-3">{projectUploading ? <BudgetLoopActivityMark compact label="正在上传" /> : <><FolderOpen className="h-4 w-4" /><span className="max-w-52 truncate">{selectedProjectName ?? "上传项目文件夹"}</span></>}</button>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
                     <span className="hidden text-[11px] text-muted-foreground sm:inline">Enter 发送 · Shift Enter 换行</span>
@@ -438,7 +394,7 @@ export function HomeTaskIntake() {
       {error ? <div role="alert" className="flex items-start justify-between gap-4 rounded-xl border border-critical/20 bg-critical/5 p-4 text-sm text-critical"><span className="flex items-start gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</span><button type="button" onClick={() => void plan()} className="shrink-0 font-semibold underline">重试</button></div> : null}
       {draft?.clarifications.length ? <section className="surface p-5"><h2 className="font-semibold">还需要你补充</h2><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{draft.clarifications.slice(0, 2).map((question) => <li key={question}>{question}</li>)}</ul></section> : null}
       {state === "planning" && !draft ? <div className="surface flex min-h-44 flex-col items-center justify-center gap-3 p-6 text-center"><BudgetLoopActivityMark label="正在分析目标" /><p className="text-sm text-muted-foreground">正在理解目标并选择合适的 Agent 团队…</p></div> : null}
-      {draft ? <TaskSetupReview focusRef={reviewRef} draft={draft} roles={roles} access={access} confirming={confirming} confirmationError={confirmationError} onDraftChange={setDraft} onRolesChange={setRoles} onEngineChange={selectEngine} onAccessChange={setAccess} onConfirm={() => void confirm()} projectUpload={projectUpload} onRequestBrowserUpload={() => browserFolderInputRef.current?.click()} nativePickerAvailable={nativePickerAvailable} /> : null}
+      {draft ? <TaskSetupReview focusRef={reviewRef} draft={draft} roles={roles} access={access} confirming={confirming} confirmationError={confirmationError} onDraftChange={setDraft} onRolesChange={setRoles} onEngineChange={selectEngine} onAccessChange={setAccess} onConfirm={() => void confirm()} projectUpload={projectUpload} onRequestBrowserUpload={() => browserFolderInputRef.current?.click()} /> : null}
     </div>
   );
 }

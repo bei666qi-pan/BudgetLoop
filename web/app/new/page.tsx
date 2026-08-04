@@ -2,22 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { AlertCircle, ArrowRight, Bug, Check, FlaskConical, Folder, FolderOpen, LocateFixed, Rocket, ShieldAlert, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { useState } from "react";
+import { AlertCircle, ArrowRight, Bug, Check, FlaskConical, Folder, LocateFixed, Rocket, ShieldAlert, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { apiFetch, idempotencyKey } from "@/lib/api";
 import { BUDGET_PRESETS, validateTaskDraft, type BudgetPreset, type TaskErrors } from "@/lib/task-form";
 import type { BudgetConfig, CreateTaskResponse, FolderAccess, Strategy, TaskTemplate } from "@/lib/types";
-
-declare global {
-  interface Window {
-    budgetloopSetProjectDir?: (path: string) => void;
-    webkit?: {
-      messageHandlers?: {
-        budgetloopPickProjectDir?: { postMessage: (value: null) => void };
-      };
-    };
-  }
-}
 
 const TEMPLATES: { id: TaskTemplate; label: string; description: string; Icon: typeof Bug }[] = [
   { id: "fix_bug", label: "修复问题", description: "定位根因并验证修复", Icon: Bug },
@@ -68,28 +57,6 @@ export default function NewTaskPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [folderPickerError, setFolderPickerError] = useState<string | null>(null);
 
-  // 供 macOS 启动器的文件夹选择器通过 JS 桥回填项目文件夹字段。
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.budgetloopSetProjectDir = (path: string) => {
-      setProjectDir(path);
-      setFolderAccess("full_access");
-      setFolderPickerError(null);
-      setErrors((current) => ({ ...current, projectDir: undefined }));
-    };
-    return () => { delete window.budgetloopSetProjectDir; };
-  }, []);
-
-  const requestFolder = () => {
-    const bridge = window.webkit?.messageHandlers?.budgetloopPickProjectDir;
-    if (bridge) {
-      setFolderPickerError(null);
-      bridge.postMessage(null);
-    } else {
-      setFolderPickerError("请在 BudgetLoop macOS App 中选择项目文件夹。");
-    }
-  };
-
   const selectPreset = (next: BudgetPreset) => { setPreset(next); setBudget({ ...BUDGET_PRESETS[next] }); setErrors({}); };
   const setBudgetValue = (key: keyof BudgetConfig, value: number) => { setBudget((current) => ({ ...current, [key]: value })); setErrors((current) => ({ ...current, [key]: undefined })); };
 
@@ -117,7 +84,7 @@ export default function NewTaskPage() {
             <div className="mt-6 grid gap-5"><label><span className="field-label">任务名称</span><input value={name} onChange={(e) => { setName(e.target.value); setErrors((current) => ({ ...current, name: undefined })); }} aria-invalid={Boolean(errors.name)} className="input-base mt-2 w-full" placeholder="例如：修复订单接口并发超扣" /><FieldError error={errors.name} /></label><label><span className="field-label">任务描述</span><textarea value={description} onChange={(e) => { setDescription(e.target.value); setErrors((current) => ({ ...current, description: undefined })); }} aria-invalid={Boolean(errors.description)} className="input-base mt-2 min-h-28 w-full resize-y" placeholder="说明问题、期望结果和已知约束。" /><FieldError error={errors.description} /></label><label><span className="field-label">验收条件 <span className="font-normal text-muted-foreground">（可选）</span></span><textarea value={acceptance} onChange={(e) => setAcceptance(e.target.value)} className="input-base mt-2 min-h-20 w-full resize-y" placeholder="例如：并发测试全部通过，库存永不为负。" /></label></div>
           </section>
 
-          <section className="p-5 sm:p-7"><h2 className="section-title">2. 工作区与安全</h2><div className="mt-5 grid gap-5"><label><span className="field-label">工作目录</span><div className="relative mt-2"><Folder className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={workdir} onChange={(e) => { setWorkdir(e.target.value); setErrors((current) => ({ ...current, workdir: undefined })); }} aria-invalid={Boolean(errors.workdir)} className="input-base w-full pl-10 font-mono" /></div><FieldError error={errors.workdir} /></label><div><span className="field-label">权限模式</span><div className="mt-2 grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="权限模式">{FOLDER_ACCESS_MODES.map((mode) => <label key={mode.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-all ${folderAccess === mode.id ? mode.id === "full_access" ? "border-warning bg-warning/5 ring-4 ring-warning/10" : "border-accent bg-accent/5 ring-4 ring-accent/5" : "border-border bg-white hover:border-border-strong"}`}><input type="radio" name="folder_access" value={mode.id} checked={folderAccess === mode.id} onChange={() => { setFolderAccess(mode.id); setFolderPickerError(null); setErrors((current) => ({ ...current, projectDir: undefined })); }} className="mt-1 h-4 w-4 shrink-0" /><span><span className="font-semibold">{mode.label}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{mode.description}</span></span></label>)}</div>{folderAccess === "full_access" ? <div role="alert" className="mt-3 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs leading-relaxed text-warning"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" /><span>高风险：Agent 将直接读写所选文件夹（包括其中的 .git），仅用于你信任的项目。</span></div> : null}</div><div><div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><label><span className="field-label">项目文件夹 <span className="font-normal text-muted-foreground">（可选，仅完全访问模式使用）</span></span><div className="relative mt-2"><Folder className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input id="new-project-dir" name="project_dir" value={projectDir} readOnly aria-readonly="true" aria-invalid={Boolean(errors.projectDir)} className="input-base w-full cursor-default bg-muted/30 pl-10 font-mono" placeholder="尚未选择项目文件夹" /></div><FieldError error={errors.projectDir} /></label><button type="button" onClick={requestFolder} className="btn btn-secondary self-end"><FolderOpen className="h-4 w-4" />选择文件夹</button></div>{folderPickerError ? <p role="alert" className="field-error">{folderPickerError}</p> : null}</div><button type="button" role="switch" aria-checked={requireApproval} onClick={() => setRequireApproval((value) => !value)} className="flex w-full items-center gap-4 rounded-lg border border-border bg-muted/30 p-4 text-left hover:border-border-strong"><span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${requireApproval ? "bg-accent" : "bg-border-strong"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${requireApproval ? "translate-x-6" : "translate-x-1"}`} /></span><span><span className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4" />高风险操作需人工确认</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">删除文件、修改敏感配置或执行高风险命令前，Agent 会暂停并请求确认。</span></span></button></div></section>
+          <section className="p-5 sm:p-7"><h2 className="section-title">2. 工作区与安全</h2><div className="mt-5 grid gap-5"><label><span className="field-label">工作目录</span><div className="relative mt-2"><Folder className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={workdir} onChange={(e) => { setWorkdir(e.target.value); setErrors((current) => ({ ...current, workdir: undefined })); }} aria-invalid={Boolean(errors.workdir)} className="input-base w-full pl-10 font-mono" /></div><FieldError error={errors.workdir} /></label><div><span className="field-label">权限模式</span><div className="mt-2 grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="权限模式">{FOLDER_ACCESS_MODES.map((mode) => <label key={mode.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-all ${folderAccess === mode.id ? mode.id === "full_access" ? "border-warning bg-warning/5 ring-4 ring-warning/10" : "border-accent bg-accent/5 ring-4 ring-accent/5" : "border-border bg-white hover:border-border-strong"}`}><input type="radio" name="folder_access" value={mode.id} checked={folderAccess === mode.id} onChange={() => { setFolderAccess(mode.id); setFolderPickerError(null); setErrors((current) => ({ ...current, projectDir: undefined })); }} className="mt-1 h-4 w-4 shrink-0" /><span><span className="font-semibold">{mode.label}</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{mode.description}</span></span></label>)}</div>{folderAccess === "full_access" ? <div role="alert" className="mt-3 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs leading-relaxed text-warning"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" /><span>高风险：Agent 将直接读写所选文件夹（包括其中的 .git），仅用于你信任的项目。</span></div> : null}</div><div><div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><label><span className="field-label">项目文件夹 <span className="font-normal text-muted-foreground">（可选，仅完全访问模式使用）</span></span><div className="relative mt-2"><Folder className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input id="new-project-dir" name="project_dir" value={projectDir} onChange={(e) => { setProjectDir(e.target.value); setFolderPickerError(null); setErrors((current) => ({ ...current, projectDir: undefined })); }} aria-invalid={Boolean(errors.projectDir)} className="input-base w-full pl-10 font-mono" placeholder="例如：/Users/you/my-project" /></div><FieldError error={errors.projectDir} /></label></div>{folderPickerError ? <p role="alert" className="field-error">{folderPickerError}</p> : null}</div><button type="button" role="switch" aria-checked={requireApproval} onClick={() => setRequireApproval((value) => !value)} className="flex w-full items-center gap-4 rounded-lg border border-border bg-muted/30 p-4 text-left hover:border-border-strong"><span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${requireApproval ? "bg-accent" : "bg-border-strong"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${requireApproval ? "translate-x-6" : "translate-x-1"}`} /></span><span><span className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4" />高风险操作需人工确认</span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">删除文件、修改敏感配置或执行高风险命令前，Agent 会暂停并请求确认。</span></span></button></div></section>
 
           <section className="p-5 sm:p-7"><h2 className="section-title">3. 预算策略</h2><div className="mt-5 grid gap-3 md:grid-cols-3">{STRATEGIES.map((item) => <button key={item.id} type="button" onClick={() => setStrategy(item.id)} aria-pressed={strategy === item.id} className={`rounded-lg border p-4 text-left ${strategy === item.id ? "border-accent bg-accent/5 ring-4 ring-accent/5" : "border-border bg-white hover:border-border-strong"}`}><span className="flex items-center justify-between font-semibold">{item.label}{strategy === item.id ? <Check className="h-4 w-4 text-accent" /> : null}</span><span className="mt-2 block text-xs leading-relaxed text-muted-foreground">{item.description}</span></button>)}</div><div className="mt-6 grid gap-3 sm:grid-cols-3">{PRESET_COPY.map((item) => <button key={item.id} type="button" onClick={() => selectPreset(item.id)} aria-pressed={preset === item.id} className={`rounded-lg border px-4 py-3 text-left ${preset === item.id ? "border-accent bg-accent/5 text-accent" : "border-border bg-white"}`}><span className="font-semibold">{item.label}</span><span className="mt-1 block text-xs text-muted-foreground">{item.description}</span></button>)}</div><div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{BUDGET_FIELDS.map((field) => <label key={field.key}><span className="text-xs font-semibold text-muted-foreground">{field.label}</span><div className="relative mt-1.5"><input type="number" min="0" step={field.step ?? 1} value={budget[field.key]} onChange={(e) => setBudgetValue(field.key, Number(e.target.value))} aria-invalid={Boolean(errors[field.key])} className="input-base w-full pr-16 font-mono tabular-nums" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{field.suffix}</span></div><FieldError error={errors[field.key]} /></label>)}</div></section>
         </div>

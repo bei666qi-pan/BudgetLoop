@@ -6,17 +6,13 @@ This suite verifies the complete planning path without mocks:
 Chromium -> Next.js same-origin proxy -> FastAPI task-drafts API -> DeepSeek -> schema validation -> rendered review UI
 ```
 
-## Cross-platform coverage
+## Coverage
 
-BudgetLoop Web, macOS, and Windows use the same Docker-backed `web`, `control-plane`, and AI gateway services. The real-model browser E2E therefore validates the shared application chain used by all three surfaces.
+BudgetLoop Web uses the Docker-backed `web`, `control-plane`, and AI gateway services. The real-model browser E2E validates the shared application chain.
 
-| Surface | What this suite validates | Additional platform gate |
+| Surface | What this suite validates | Additional gate |
 | --- | --- | --- |
 | Web | Next.js UI, same-origin BFF, FastAPI planning API, real DeepSeek response, schema validation, and rendered AI provenance | `npm test` and `npm run build` in `web/` |
-| macOS | The same Web/control-plane/AI chain launched by the native AppKit host | `./desktop/build.sh`, bundle version parity, and `codesign --verify` in `release.yml` |
-| Windows | The same Web/control-plane/AI chain launched by the Tauri/WebView2 host | Rust tests and MSI creation in `release.yml` |
-
-This test does not replace native packaging checks. A release is considered cross-platform verified only when the real AI E2E and the existing Web, macOS, and Windows release gates all pass.
 
 ## Required secret
 

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeTaskIntake } from "@/components/home/HomeTaskIntake";
@@ -116,27 +116,31 @@ async function createDraft(user: ReturnType<typeof userEvent.setup>, value = "�
 }
 
 describe("home conversational intake", () => {
-  it("selects a system project folder from the initial composer and preserves it through planning", async () => {
+  it("allows manual entry of a project folder path from the review and preserves it", async () => {
     const user = userEvent.setup();
-    const postMessage = vi.fn();
-    window.webkit = { messageHandlers: { budgetloopPickProjectDir: { postMessage } } };
     const fullAccessDraft = draft();
     fullAccessDraft.execution.default_engine = "codex";
     apiFetchMock.mockResolvedValueOnce(fullAccessDraft);
     render(<HomeTaskIntake />);
 
-    await user.click(screen.getByRole("button", { name: "选择项目文件夹" }));
-    expect(postMessage).toHaveBeenCalledWith(null);
-    act(() => window.budgetloopSetProjectDir?.("/tmp/selected-before-planning"));
-    expect(screen.getByRole("button", { name: "更换项目文件夹，当前 /tmp/selected-before-planning" })).toHaveTextContent("selected-before-planning");
-
     await user.type(screen.getByLabelText("描述想完成的目标"), "修复订单并发超扣");
     await user.click(screen.getByRole("button", { name: "生成建议配置" }));
     await screen.findByRole("heading", { name: "确认这份配置，就可以开始" });
-    expect(screen.getByRole("radio", { name: /直接修改项目/ })).toBeChecked();
-    expect(screen.getByLabelText("项目文件夹")).toHaveValue("/tmp/selected-before-planning");
+
+    // Select full access mode
+    await user.click(screen.getByRole("radio", { name: /直接修改项目/ }));
+
+    // Enter a project folder path manually
+    const pathInput = screen.getByLabelText("项目文件夹");
+    await user.clear(pathInput);
+    await user.type(pathInput, "/tmp/selected-before-planning");
+    expect(pathInput).toHaveValue("/tmp/selected-before-planning");
+
+    // Engine should switch to openhands for full access
     expect(screen.getByLabelText("执行 Agent")).toHaveValue("openhands");
     expect(screen.queryByRole("option", { name: /Codex/ })).not.toBeInTheDocument();
+
+    // Confirm is disabled until acknowledgement
     expect(screen.getByRole("button", { name: "确认并启动" })).toBeDisabled();
   });
 
@@ -267,41 +271,43 @@ describe("home conversational intake", () => {
 
   it("requires path and renewed acknowledgement for direct project access", async () => {
     const user = userEvent.setup();
-    window.webkit = { messageHandlers: { budgetloopPickProjectDir: { postMessage: vi.fn() } } };
     await createDraft(user);
     const confirm = screen.getByRole("button", { name: "确认并启动" });
     expect(confirm).toBeEnabled();
     await user.click(screen.getByRole("radio", { name: /直接修改项目/ }));
     expect(confirm).toBeDisabled();
     const path = screen.getByLabelText("项目文件夹");
-    expect(path).toHaveAttribute("readonly");
-    act(() => window.budgetloopSetProjectDir?.("/tmp/project"));
+    expect(path).not.toHaveAttribute("readonly");
+    await user.clear(path);
+    await user.type(path, "/tmp/project");
     await user.click(screen.getByRole("checkbox", { name: /我确认/ }));
     expect(confirm).toBeEnabled();
-    act(() => window.budgetloopSetProjectDir?.("/tmp/project-changed"));
+    // Changing the path resets acknowledgement
+    await user.clear(path);
+    await user.type(path, "/tmp/project-changed");
     expect(screen.getByRole("checkbox", { name: /我确认/ })).not.toBeChecked();
     expect(confirm).toBeDisabled();
   });
 
-  it("opens the native folder picker from the control beside the project field", async () => {
+  it("allows manual entry of the project folder in the review control", async () => {
     const user = userEvent.setup();
-    const postMessage = vi.fn();
-    window.webkit = { messageHandlers: { budgetloopPickProjectDir: { postMessage } } };
     await createDraft(user);
     await user.click(screen.getByRole("radio", { name: /直接修改项目/ }));
     const field = screen.getByLabelText("项目文件夹");
-    const button = screen.getByRole("button", { name: "选择文件夹" });
-    expect(button.parentElement).toContainElement(field);
-    await user.click(button);
-    expect(postMessage).toHaveBeenCalledWith(null);
+    expect(field).not.toHaveAttribute("readonly");
+    expect(field).toHaveAttribute("placeholder", "例如：/Users/you/my-project");
+    await user.clear(field);
+    await user.type(field, "/tmp/budgetloop-project");
+    expect(field).toHaveValue("/tmp/budgetloop-project");
   });
 
-  it("prevents the browser from entering the macOS-only direct-access dead end", async () => {
+  it("allows full direct access mode in the browser without native picker", async () => {
     const user = userEvent.setup();
     await createDraft(user);
-    expect(screen.getByRole("radio", { name: /直接修改项目/ })).toBeDisabled();
-    expect(screen.getByText("网页版不提供本地写入权限；请在 BudgetLoop macOS App 中使用。")).toBeInTheDocument();
-    expect(screen.queryByLabelText("项目文件夹")).not.toBeInTheDocument();
+    const fullAccessRadio = screen.getByRole("radio", { name: /直接修改项目/ });
+    expect(fullAccessRadio).not.toBeDisabled();
+    await user.click(fullAccessRadio);
+    expect(screen.getByLabelText("项目文件夹")).toBeInTheDocument();
   });
 
   it("retries confirmation with one idempotency key and preserves the draft", async () => {
