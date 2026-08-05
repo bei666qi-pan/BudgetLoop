@@ -1,0 +1,14 @@
+model = "deepseek-v4-pro-202606"
+model_provider = "budgetloop"
+model_reasoning_effort = "xhigh"
+
+[model_providers.budgetloop]
+name = "BudgetLoop Managed AI"
+base_url = "http://127.0.0.1:8000/api/runtime/ai/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+
+[projects."/Users/qi/Desktop/BudgetLoop"]
+trust_level = "trusted"
