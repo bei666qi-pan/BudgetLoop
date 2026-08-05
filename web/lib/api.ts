@@ -117,3 +117,122 @@ export function idempotencyKey(): string {
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+
+// ---- Team Inspector API ----
+
+import type {
+  TeamInspectorProgress,
+  TeamInspectorUsage,
+  TeamBudgetPatch,
+  TeamBudgetPatchResponse,
+  SessionBudgetPatch,
+} from "./types";
+
+/** 获取团队进度聚合。 */
+export async function fetchTeamProgress(
+  containerId: string,
+): Promise<TeamInspectorProgress> {
+  return apiFetch<TeamInspectorProgress>(
+    `/api/work-containers/${containerId}/progress`,
+    { method: "GET" },
+  );
+}
+
+/** 获取团队用量详情。 */
+export async function fetchTeamUsage(
+  containerId: string,
+): Promise<TeamInspectorUsage> {
+  return apiFetch<TeamInspectorUsage>(
+    `/api/work-containers/${containerId}/usage`,
+    { method: "GET" },
+  );
+}
+
+/** 暂停容器（幂等）。 */
+export async function pauseContainer(containerId: string): Promise<void> {
+  await apiFetch(`/api/work-containers/${containerId}/pause`, {
+    method: "POST",
+  });
+}
+
+/** 恢复容器（幂等）。 */
+export async function resumeContainer(containerId: string): Promise<void> {
+  await apiFetch(`/api/work-containers/${containerId}/resume`, {
+    method: "POST",
+  });
+}
+
+/** 停止容器（不可逆，需确认）。 */
+export async function stopContainer(containerId: string): Promise<void> {
+  await apiFetch(`/api/work-containers/${containerId}/stop`, {
+    method: "POST",
+  });
+}
+
+/** 调整团队预算。 */
+export async function patchContainerBudget(
+  containerId: string,
+  body: TeamBudgetPatch,
+): Promise<TeamBudgetPatchResponse> {
+  return apiFetch<TeamBudgetPatchResponse>(
+    `/api/work-containers/${containerId}/budget`,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
+}
+
+/** 暂停指定 Session（幂等）。 */
+export async function pauseSession(
+  containerId: string,
+  sessionId: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/work-containers/${containerId}/sessions/${sessionId}/pause`,
+    { method: "PATCH" },
+  );
+}
+
+/** 恢复指定 Session（幂等）。 */
+export async function resumeSession(
+  containerId: string,
+  sessionId: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/work-containers/${containerId}/sessions/${sessionId}/resume`,
+    { method: "PATCH" },
+  );
+}
+
+/** 取消指定 Session（不可逆）。 */
+export async function cancelSession(
+  containerId: string,
+  sessionId: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/work-containers/${containerId}/sessions/${sessionId}/cancel`,
+    { method: "POST" },
+  );
+}
+
+/** 调整 Session 预算。 */
+export async function patchSessionBudget(
+  containerId: string,
+  sessionId: string,
+  body: SessionBudgetPatch,
+): Promise<TeamBudgetPatchResponse> {
+  return apiFetch<TeamBudgetPatchResponse>(
+    `/api/work-containers/${containerId}/sessions/${sessionId}/budget`,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
+}
+
+/** 追加纠偏指令到 Session。 */
+export async function appendSessionInstruction(
+  containerId: string,
+  sessionId: string,
+  instruction: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/work-containers/${containerId}/sessions/${sessionId}/correct`,
+    { method: "POST", body: JSON.stringify({ instruction }) },
+  );
+}

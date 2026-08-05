@@ -162,12 +162,17 @@ class SessionMessage(Base):
     )
     author_type: Mapped[str] = mapped_column(String(20), default="operator")
     kind: Mapped[str] = mapped_column(String(20), default="message")
+    message_type: Mapped[str] = mapped_column(String(32), default="message")
     content: Mapped[str] = mapped_column(Text)
     delivery_state: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     message_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    injection_count: Mapped[int] = mapped_column(Integer, default=0)
+    """Number of times this message has been injected into the agent context.
+    When >= 3 without acknowledgment, the message is considered failed."""
 
     container: Mapped[WorkContainer] = relationship(back_populates="messages")
     sender_session: Mapped[WorkSession | None] = relationship(
@@ -311,11 +316,15 @@ class ExecutionEvent(Base):
 
     seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("task_runs.id"), index=True)
+    container_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_containers.id"), nullable=True, index=True)
     type: Mapped[str] = mapped_column(String(50))
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    __table_args__ = (Index("ix_events_run_seq", "run_id", "seq"),)
+    __table_args__ = (
+        Index("ix_events_run_seq", "run_id", "seq"),
+        Index("ix_events_container_seq", "container_id", "seq"),
+    )
 
 
 class Approval(Base):
@@ -389,4 +398,39 @@ class FinalReport(Base):
     suggestions: Mapped[dict] = mapped_column(JSONB, default=list)
     report_md: Mapped[str | None] = mapped_column(Text, nullable=True)
     artifact_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TeamAuditEvent(Base):
+    """Immutable audit trail for operator control actions on teams."""
+
+    __tablename__ = "team_audit_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    container_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("work_containers.id"), index=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("work_sessions.id"), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(64))
+    old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    operator: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SessionProgressSignal(Base):
+    """Structured progress declaration from an Agent session — agent-declared, not inferred."""
+
+    __tablename__ = "session_progress_signals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("work_sessions.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("task_runs.id"), index=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    milestone: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    completed_items: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # list of completed item strings
+    next_step: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    blocker_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    needs_operator: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    iteration: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

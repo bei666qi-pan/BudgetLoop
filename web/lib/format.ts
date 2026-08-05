@@ -56,3 +56,23 @@ export function percent(used: number, max: number): number | null {
   if (!max || max <= 0) return null;
   return Math.min(100, Math.round((used / max) * 100));
 }
+
+/** ISO 时间戳转相对时间文本（中文），无效输入返回 "—"。 */
+export function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  if (diffMs < 0) return "刚刚";
+  const seconds = Math.floor(diffMs / 1000);
+  if (seconds < 10) return "刚刚";
+  if (seconds < 60) return `${seconds}秒前`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}天前`;
+  return formatDateTime(iso);
+}

@@ -46,9 +46,21 @@ class SessionMessageKind(StrEnum):
     HANDOFF = "handoff"
 
 
+class SessionMessageType(StrEnum):
+    """消息分类，决定渲染方式、投递优先级和防失控配额。"""
+
+    MESSAGE = "message"
+    HANDOFF = "handoff"
+    PROGRESS_UPDATE = "progress_update"
+    SYSTEM_FACT = "system_fact"
+
+
 class MessageDeliveryState(StrEnum):
     QUEUED = "queued"
-    DELIVERED = "delivered"
+    INJECTED = "injected"
+    ACKNOWLEDGED = "acknowledged"
+    FAILED = "failed"
+    DELIVERED = "delivered"  # 保留兼容旧语义（等价于 acknowledged）
 
 
 class RunStatus(StrEnum):
@@ -204,3 +216,8 @@ class EventType(StrEnum):
     COLLABORATION_DELIVERED = "collaboration_delivered"
     WARNING = "warning"
     RUN_FINISHED = "run_finished"
+    # Team-level event types
+    SESSION_PROGRESS = "session_progress"
+    BUDGET_PRESSURE_CHANGE = "budget_pressure_change"
+    TEAM_CONTROL_AUDIT = "team_control_audit"
+    SESSION_STATUS_CHANGE = "session_status_change"

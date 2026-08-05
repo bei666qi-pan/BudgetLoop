@@ -321,9 +321,9 @@ class TestAllowedTransitions:
 class TestEventType:
     @pytest.mark.unit
     def test_event_type_count(self):
-        """EventType has the expected number of values (21)."""
+        """EventType has the expected number of values (25)."""
         count = len(list(EventType))
-        assert count == 21, f"Expected 21 EventType values, got {count}"
+        assert count == 25, f"Expected 25 EventType values, got {count}"
 
     @pytest.mark.unit
     def test_key_event_types_exist(self):
@@ -337,6 +337,7 @@ class TestEventType:
             "approval_requested", "approval_decided",
             "checkpoint_created", "rollback",
             "agent_message", "collaboration_delivered", "warning", "run_finished",
+            "session_progress", "budget_pressure_change", "team_control_audit", "session_status_change",
         }
         actual = {e.value for e in EventType}
         assert actual == expected

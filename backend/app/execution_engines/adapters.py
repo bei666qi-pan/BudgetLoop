@@ -3,14 +3,57 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Protocol
 
 from app.execution_engines.registry import ExecutionEngine, get_engine
 
 
+class InjectionPoint(Enum):
+    NONE = "none"
+    ITERATION_START = "iteration_start"
+    ITERATION_END = "iteration_end"
+
+
+@dataclass
+class ExtractedProgressSignal:
+    """Structured progress declaration parsed from agent output — agent-declared, not inferred."""
+
+    summary: str | None = None
+    milestone: str | None = None
+    completed_items: list[str] = field(default_factory=list)
+    next_step: str | None = None
+    blocked: bool = False
+    blocker_reason: str | None = None
+    needs_operator: bool = False
+    evidence: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "summary": self.summary,
+            "milestone": self.milestone,
+            "completed_items": self.completed_items,
+            "next_step": self.next_step,
+            "blocked": self.blocked,
+            "blocker_reason": self.blocker_reason,
+            "needs_operator": self.needs_operator,
+            "evidence": self.evidence,
+        }
+
+
 def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _ensure_str_list(value: Any) -> list[str]:
+    """Normalize a JSON value into a list of strings for completed_items."""
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    if isinstance(value, str):
+        return [value]
+    return []
 
 
 @dataclass(frozen=True)
@@ -147,6 +190,185 @@ class CLIEngineAdapter:
             timeout=float(model_config.get("agent_step_timeout", 300)),
             runtime_env=handle.runtime_env,
         )
+
+    # ------------------------------------------------------------------
+    # CLI safety-checkpoint injection and progress extraction
+    # ------------------------------------------------------------------
+
+    def check_injection_point(
+        self, events: list[NormalizedEngineEvent]
+    ) -> InjectionPoint:
+        """Detect iteration start/end boundaries from normalized events.
+
+        CLI engines cannot receive hot-injected messages mid-stream.  Messages
+        are injected at iteration boundaries — specifically at ITERATION_START,
+        before the next prompt is dispatched.  This method analyses normalized
+        events to determine whether the engine is entering or leaving an
+        iteration.
+
+        Returns ITERATION_START when the most recent event is a start signal
+        (or no events yet — fresh start).  Returns ITERATION_END when the
+        most recent event is terminal.  Returns NONE when events are in the
+        middle of an active iteration.
+        """
+        if not events:
+            return InjectionPoint.ITERATION_START
+
+        terminal_kinds: dict[str, set[str]] = {
+            "codex": {"turn.completed", "turn.failed"},
+            "gemini-cli": {"result"},
+            "opencode": {"step_finish"},
+        }
+        start_kinds: dict[str, set[str]] = {
+            "codex": {"thread.started"},
+            "gemini-cli": {"init"},
+            "opencode": set(),
+        }
+
+        terminal_set = terminal_kinds.get(self.engine.id, set())
+        start_set = start_kinds.get(self.engine.id, set())
+
+        # Walk events from last to first; the most recent boundary wins.
+        # If we find a terminal as the last event → ITERATION_END.
+        # If we find a start as the last meaningful event → ITERATION_START.
+        # If the last event is neither, we are mid-iteration → NONE.
+        found_mid = False
+        for ev in reversed(events):
+            if ev.kind in terminal_set or ev.terminal:
+                return InjectionPoint.ITERATION_END if not found_mid else InjectionPoint.NONE
+            if ev.kind in start_set:
+                return InjectionPoint.ITERATION_START if not found_mid else InjectionPoint.NONE
+            found_mid = True
+
+        return InjectionPoint.NONE
+
+    def extract_progress_signal(self, text: str) -> ExtractedProgressSignal | None:
+        """Parse structured progress from agent output text.
+
+        Detects three forms:
+        1. Explicit JSON block marked with ``[PROGRESS]`` prefix.
+        2. Inline ``PROGRESS:`` key-value pairs.
+        3. A JSON object containing progress-signal keys.
+
+        Returns None when no structured progress signal is found.
+        """
+        if not text:
+            return None
+
+        # Form 1: [PROGRESS] { ... } JSON block
+        progress_match = re.search(
+            r"\[PROGRESS\]\s*(\{.*?\})\s*(?:$|\n)", text, re.DOTALL
+        )
+        if progress_match:
+            return self._parse_progress_json(progress_match.group(1))
+
+        # Form 2: Inline key-value pairs with PROGRESS: prefix
+        inline_keys = {
+            "summary", "milestone", "completed_items", "next_step",
+            "blocked", "blocker_reason", "needs_operator", "evidence",
+        }
+        if any(f"PROGRESS:{key}" in text for key in inline_keys):
+            return self._parse_progress_inline(text, inline_keys)
+
+        # Form 3: Raw JSON object with progress keys
+        try:
+            trimmed = text.strip()
+            if trimmed.startswith("{") and trimmed.endswith("}"):
+                obj = json.loads(trimmed)
+                if isinstance(obj, dict) and any(k in obj for k in inline_keys):
+                    return self._parse_progress_json(trimmed)
+        except json.JSONDecodeError:
+            pass
+
+        return None
+
+    def detect_message_acknowledgement(
+        self, events: list[NormalizedEngineEvent]
+    ) -> set[str]:
+        """Extract acknowledged message IDs from agent output events.
+
+        Detects when an agent confirms receipt of injected messages via
+        ``send_message``-style tool calls or structured output containing
+        ``acknowledging_message_id`` references.
+
+        Returns a set of confirmed message ID strings.
+        """
+        acknowledged: set[str] = set()
+        for ev in events:
+            text = ev.public_text or ""
+            # Pattern 1: acknowledged_message_id / acknowledging_message_id
+            for pattern in (
+                r"acknowledg(?:ed|ing)_message_id[\"'\s:=]+([a-f0-9-]{32,36})",
+                r'"message_ack"\s*:\s*\[(.*?)\]',
+                r'"acknowledged_messages"\s*:\s*\[(.*?)\]',
+            ):
+                for match in re.finditer(pattern, text, re.IGNORECASE):
+                    group = match.group(1)
+                    ids = re.findall(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", group)
+                    acknowledged.update(ids)
+
+            # Pattern 2: send_message tool input with acknowledging_message_id
+            tool_input = ev.tool_input or {}
+            if isinstance(tool_input, dict):
+                ack_id = tool_input.get("acknowledging_message_id") or tool_input.get("acknowledged_message_id")
+                if ack_id and isinstance(ack_id, str):
+                    acknowledged.add(ack_id)
+                # Also check for list form
+                ack_list = tool_input.get("acknowledged_messages") or tool_input.get("message_acks")
+                if isinstance(ack_list, list):
+                    for item in ack_list:
+                        if isinstance(item, str) and len(item) >= 32:
+                            acknowledged.add(item)
+
+            # Pattern 3: Raw payload acknowledgement fields
+            if ev.raw:
+                ack = ev.raw.get("acknowledging_message_id") or ev.raw.get("acknowledged_message_id")
+                if ack and isinstance(ack, str):
+                    acknowledged.add(ack)
+
+        return acknowledged
+
+    # ------------------------------------------------------------------
+    # Internal progress parsing helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_progress_json(json_text: str) -> ExtractedProgressSignal | None:
+        try:
+            obj = json.loads(json_text)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(obj, dict):
+            return None
+        return ExtractedProgressSignal(
+            summary=obj.get("summary"),
+            milestone=obj.get("milestone"),
+            completed_items=_ensure_str_list(obj.get("completed_items")),
+            next_step=obj.get("next_step"),
+            blocked=bool(obj.get("blocked", False)),
+            blocker_reason=obj.get("blocker_reason"),
+            needs_operator=bool(obj.get("needs_operator", False)),
+            evidence=obj.get("evidence"),
+        )
+
+    @staticmethod
+    def _parse_progress_inline(text: str, keys: set[str]) -> ExtractedProgressSignal | None:
+        signal = ExtractedProgressSignal()
+        found = False
+        for key in keys:
+            pattern = rf"PROGRESS:{key}\s*[:=]?\s*(.+?)(?:\n|PROGRESS:|$)"
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                value = match.group(1).strip()
+                found = True
+                if key == "completed_items":
+                    items = [i.strip() for i in value.replace(";", ",").split(",") if i.strip()]
+                    signal.completed_items = items
+                elif key in ("blocked", "needs_operator"):
+                    setattr(signal, key, value.lower() in ("true", "1", "yes"))
+                else:
+                    setattr(signal, key, value)
+        return signal if found else None
 
     @staticmethod
     def _normalize_codex(payload: dict[str, Any], kind: str) -> NormalizedEngineEvent | None:

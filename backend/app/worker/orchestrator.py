@@ -23,10 +23,13 @@ from typing import Any
 
 from app.budget.manager import BudgetRejected, BudgetSnapshot, TaskBudgetManager
 from app.collaboration.autonomous import release_autonomous_stages
+from app.collaboration.protocol import inject_coordination_protocol
 from app.collaboration.service import (
     delivery_event_payload,
     format_agent_inbox,
+    mark_messages_acknowledged,
     mark_messages_delivered,
+    mark_messages_injected,
     queued_messages_for_run,
 )
 from app.core.config import settings
@@ -48,6 +51,8 @@ from app.core.models import (
     LlmCall,
     LoopIteration,
     ProgressSignal,
+    SessionMessage,
+    SessionProgressSignal,
     Task,
     TaskPhase,
     TaskRun,
@@ -567,6 +572,8 @@ class Orchestrator:
                     last_score=self._scores[-1] if self._scores else None,
                     feedback=self._feedback,
                 )
+            if self._work_session(run) is not None:
+                instruction = f"{instruction}\n\n{inject_coordination_protocol()}"
             inbox = queued_messages_for_run(self.session, self.run_uuid)
             if inbox:
                 instruction = f"{instruction}\n\n{format_agent_inbox(inbox)}"
@@ -609,6 +616,11 @@ class Orchestrator:
                     budget.release(est_tokens, est_cost)
                     self._commit()
                 raise
+
+            # d2. CLI safety-checkpoint: extract progress signal and detect
+            # message acknowledgements from agent output
+            if getattr(self.client, "transport", "server") == "cli":
+                self._handle_cli_progress_and_acks(run, iteration, events)
 
             # e. 测试（验收涉及测试或当前阶段为 verify/repair）
             cur_test = self._maybe_run_tests(run, task, iteration, working_dir, model_config)
@@ -682,24 +694,148 @@ class Orchestrator:
         budget.settle(est_tokens, est_cost, actual_tokens, actual_cost)
 
     def _send_iteration_message(self, run: TaskRun, instruction: str, inbox: list) -> None:
-        """Submit and schedule execution before claiming inbox delivery."""
+        """Submit and schedule execution. CLI engines inject → acknowledged;
+        server engines mark as delivered immediately."""
         if getattr(self.client, "transport", "server") == "cli":
+            # CLI safety-checkpoint injection: messages transition queued → injected,
+            # and only → acknowledged when the agent confirms via send_message.
             self.client.send_message(instruction, run=True)
+            if inbox:
+                mark_messages_injected(inbox)
+                self.emit_event(
+                    run,
+                    EventType.COLLABORATION_DELIVERED,
+                    delivery_event_payload(inbox),
+                )
+                self._commit()
         else:
             self.client.send_message(instruction, run=False)
             self.client.run_conversation()
-        if not inbox:
+            if inbox:
+                mark_messages_delivered(inbox)
+                self.emit_event(
+                    run,
+                    EventType.COLLABORATION_DELIVERED,
+                    delivery_event_payload(inbox),
+                )
+                self._commit()
+
+    # ------------------------------------------------------------------
+    # d0. CLI progress extraction and acknowledgement detection
+    # ------------------------------------------------------------------
+    def _handle_cli_progress_and_acks(
+        self, run: TaskRun, iteration: int, events: list[dict]
+    ) -> None:
+        """After a CLI iteration: extract agent-declared progress signals and
+        detect message acknowledgements from the raw event stream."""
+        if not self.engine_adapter:
             return
-        mark_messages_delivered(inbox)
+
+        # Collect public text from agent messages for progress extraction
+        all_text: list[str] = []
+        for ev in events:
+            kind = str(ev.get("kind") or ev.get("type") or "")
+            text = ev.get("public_text") or ev.get("text") or ev.get("content") or ""
+            if isinstance(text, str) and len(text) > 0 and "reasoning" not in kind.lower():
+                all_text.append(text[:4000])
+
+        combined = "\n".join(all_text)
+
+        # Extract progress signal
+        signal = self.engine_adapter.extract_progress_signal(combined)
+        if signal is not None:
+            self._store_session_progress(run, iteration, signal)
+
+        # Detect message acknowledgements
+        normalized_events = [
+            ev
+            for line in [json.dumps(ev) if isinstance(ev, dict) else "" for ev in events]
+            if line
+        ]
+        # Reconstruct NormalizedEngineEvent-like objects for detection
+        normalized = []
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            kind = str(ev.get("kind") or ev.get("type") or "")
+            text = ev.get("public_text") or ev.get("text") or ev.get("content") or ""
+            if isinstance(text, dict):
+                text = text.get("text", "")
+            tool_input = ev.get("tool_input") or ev.get("input") or {}
+            normalized.append(
+                type(
+                    "NormEv",
+                    (),
+                    {
+                        "kind": kind,
+                        "public_text": str(text)[:4000] if text else None,
+                        "tool_input": tool_input,
+                        "raw": ev,
+                    },
+                )()
+            )
+
+        if normalized:
+            acked_ids = self.engine_adapter.detect_message_acknowledgement(normalized)
+            if acked_ids:
+                owner = self._work_session(run)
+                if owner is not None:
+                    from app.core.models import SessionMessage
+
+                    injected_messages = (
+                        self.session.query(SessionMessage)
+                        .filter(
+                            SessionMessage.recipient_session_id == owner.id,
+                            SessionMessage.delivery_state == "injected",
+                        )
+                        .all()
+                    )
+                    count = mark_messages_acknowledged(injected_messages, acked_ids)
+                    if count > 0:
+                        self.emit_event(
+                            run,
+                            EventType.COLLABORATION_DELIVERED,
+                            {
+                                "action": "messages_acknowledged",
+                                "count": count,
+                                "message_ids": list(acked_ids),
+                            },
+                        )
+                        self._commit()
+
+    def _store_session_progress(
+        self, run: TaskRun, iteration: int, signal
+    ) -> None:
+        """Persist an agent-declared progress signal for the owning session."""
+        owner = self._work_session(run)
+        if owner is None:
+            return
+        from app.core.models import SessionProgressSignal
+
+        self.session.add(
+            SessionProgressSignal(
+                session_id=owner.id,
+                run_id=self.run_uuid,
+                summary=signal.summary,
+                milestone=signal.milestone,
+                completed_items=signal.completed_items if signal.completed_items else None,
+                next_step=signal.next_step,
+                blocked=signal.blocked,
+                blocker_reason=signal.blocker_reason,
+                needs_operator=signal.needs_operator,
+                evidence=signal.evidence,
+                iteration=iteration,
+            )
+        )
         self.emit_event(
             run,
             EventType.COLLABORATION_DELIVERED,
-            delivery_event_payload(inbox),
+            {
+                "type": "session_progress",
+                "iteration": iteration,
+                "progress": signal.to_dict() if hasattr(signal, "to_dict") else {},
+            },
         )
-        self._commit()
-
-    # ------------------------------------------------------------------
-    # d. 事件记录：ActionEvent/ObservationEvent 配对 -> tool_calls
     # ------------------------------------------------------------------
     def _record_events(self, run: TaskRun, iteration: int, events: list[dict]) -> dict:
         actions: dict[str, dict] = {}

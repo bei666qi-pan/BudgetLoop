@@ -24,6 +24,7 @@ from app.api import (
     stream,
     task_drafts,
     tasks,
+    team_observatory,
     team_presets,
     work_containers,
 )
@@ -96,6 +97,7 @@ for router in (
     approvals.router,
     stream.router,
     execution_engines.router,
+    team_observatory.router,
     team_presets.router,
     work_containers.router,
 ):

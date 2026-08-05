@@ -11,15 +11,25 @@ export function ProgressBar({
   color = "bg-accent",
   track = "bg-muted",
   height = "h-2",
+  label,
 }: {
   ratio: number;
   color?: string;
   track?: string;
   height?: string;
+  /** Accessible label for the progress bar (e.g. "Token usage") */
+  label?: string;
 }) {
   const pct = Math.max(0, Math.min(1, ratio)) * 100;
   return (
-    <div className={`w-full overflow-hidden rounded-full ${track} ${height}`}>
+    <div
+      role="progressbar"
+      aria-valuenow={Math.round(pct)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={label ?? "进度"}
+      className={`w-full overflow-hidden rounded-full ${track} ${height}`}
+    >
       <div
         className={`${height} rounded-full ${color} transition-all duration-500`}
         style={{ width: `${pct}%` }}

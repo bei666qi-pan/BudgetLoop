@@ -268,6 +268,27 @@ export type WorkspacePolicy = "isolated" | "worktree";
 export type MessageKind = "message" | "handoff";
 export type DeliveryState = "queued" | "delivered" | "recorded";
 
+// Agent Team 消息类型（团队频道/观测台）
+export type TeamMessageType = "message" | "handoff" | "progress_update" | "system_fact";
+export type TeamDeliveryState = "queued" | "injected" | "acknowledged" | "failed";
+
+/** 团队频道消息——聚合所有 Session 的消息流 */
+export interface TeamChatMessage {
+  id: string;
+  idempotency_key?: string | null;
+  entry_type: TeamMessageType | "agent_output";
+  author_type: string;
+  sender_session_id: string | null;
+  sender_role: string;
+  recipient_session_id: string | null;
+  recipient_role: string | null;
+  content: string;
+  delivery_state: TeamDeliveryState | string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  delivered_at?: string | null;
+}
+
 export interface WorkContainerCounts {
   sessions: number;
   running: number;
@@ -291,6 +312,10 @@ export interface WorkSessionSummary {
   workspace_status: "PENDING" | "PROVISIONING" | "READY" | "FAILED" | string;
   workspace_error: string | null;
   run_started_at?: string | null;
+  // Enriched budget fields from team obsertory (optional, present when container detail is enriched)
+  budget_used_tokens?: number | null;
+  budget_max_tokens?: number | null;
+  budget_used_cost?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -308,6 +333,10 @@ export interface WorkContainer {
   preset_snapshot?: TeamPresetSnapshot | null;
   counts: WorkContainerCounts;
   sessions: WorkSessionSummary[];
+  /** 团队观测台 enriched 字段 — GET /api/containers 返回 */
+  team_status?: TeamStatus | null;
+  alert_count?: number | null;
+  active_session_count?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -681,4 +710,185 @@ export interface ExecutionEnginesResponse {
     engines_are_replaceable: boolean;
     silent_fallback: boolean;
   };
+}
+
+// ---- 团队观测台 / Session Rail ----
+
+/** 观测台 Session 列表项，聚合了基础摘要、进度信号和预算比率。 */
+export interface TeamSessionView {
+  id: string;
+  container_id: string;
+  role: string;
+  status: RunStatus | string;
+  pressure_mode: PressureMode;
+  /** 当前阶段/里程碑，来自进度信号，缺失时显示"未上报" */
+  current_phase?: string | null;
+  /** ISO 时间戳，用于排序和相对时间展示 */
+  last_activity?: string | null;
+  /** 进度信号标记的阻塞状态 */
+  blocked?: boolean;
+  /** 进度信号标记的是否需要操作员介入 */
+  needs_operator?: boolean;
+  /** Token 使用比率 (used / max)，用于进度条展示；范围 0-1 */
+  budget_ratio?: number;
+}
+
+// ---- Team Observatory ----
+
+export type TeamStatus = "active" | "paused" | "blocked" | "completed";
+export type ConnectionState = "connected" | "stale" | "disconnected";
+
+export interface TeamAlert {
+  kind: "approval" | "blocking" | "overspend" | "budget_exhausted";
+  message: string;
+  session_id?: string | null;
+  session_role?: string | null;
+}
+
+export interface TeamUsageSummary {
+  total_tokens: number;
+  max_tokens: number;
+  total_cost: number | null;
+  max_cost: number;
+  total_calls: number;
+  max_calls: number;
+  elapsed_seconds: number;
+  max_wall_time_seconds: number;
+  pressure: PressureMode;
+  burn_rate_tokens_per_min: number | null;
+  est_depletion: string | null;
+}
+
+export interface TeamPhaseInfo {
+  current_phase: string | null;
+  next_milestone: string | null;
+}
+
+export interface TeamObservatoryResponse {
+  team_status: TeamStatus;
+  active_session_count: number;
+  total_session_count: number;
+  alert_count: number;
+  alerts: TeamAlert[];
+  usage: TeamUsageSummary | null;
+  phase: TeamPhaseInfo | null;
+}
+
+export interface TeamStreamEvent {
+  seq: number;
+  type: "session_message" | "session_progress" | "session_status_change" | "team_control_audit" | "budget_pressure_change";
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export const TEAM_STATUS_LABELS: Record<TeamStatus, string> = {
+  active: "运行中",
+  paused: "已暂停",
+  blocked: "已阻塞",
+  completed: "已完成",
+};
+
+export const CONNECTION_STATUS_LABELS: Record<ConnectionState, string> = {
+  connected: "已连接",
+  stale: "数据可能过期",
+  disconnected: "已断开",
+};
+
+// ---- 团队观测台 / Agent Team 观测台 ----
+
+/** Agent 声明的结构化进度信号（来自 session_progress_signals 表）。 */
+export interface SessionProgressSignal {
+  id: string;
+  session_id: string;
+  run_id: string;
+  summary: string | null;
+  milestone: string | null;
+  completed_items: string[] | null;
+  next_step: string | null;
+  blocked: boolean;
+  blocker_reason: string | null;
+  needs_operator: boolean;
+  evidence: string | null;
+  iteration: number;
+  created_at: string;
+}
+
+/** 轻量容器信息，用于 Run 页面的团队上下文。 */
+export interface ContainerTeamInfo {
+  id: string;
+  name: string;
+  lifecycle_state: ContainerLifecycle;
+  team_status?: string | null;
+}
+
+// ---- Team Inspector 面板 ----
+
+/** 团队进度聚合（含团队摘要和所有 Session 的进度信号）。 */
+export interface TeamInspectorProgress {
+  team_summary: {
+    total: number;
+    running: number;
+    waiting: number;
+    paused: number;
+    blocked: number;
+    completed: number;
+  };
+  active_stage: string | null;
+  next_focus: string | null;
+  sessions: SessionProgressSignal[];
+}
+
+/** 团队用量详情（含 Token 分类细项）。 */
+export interface TeamInspectorUsage {
+  tokens: {
+    used: number;
+    max: number;
+    remaining: number;
+    prompt: number | null;
+    completion: number | null;
+    reasoning: number | null;
+    cache_read: number | null;
+  };
+  cost: {
+    used: number | null;
+    max: number;
+    remaining: number | null;
+  };
+  wall_time_ms: number;
+  max_wall_time_ms: number;
+  calls: {
+    used: number;
+    max: number;
+  };
+  health: PressureMode;
+  active_time_ms: number | null;
+  parallelism: {
+    current: number;
+    max: number;
+  };
+  consumption_rate_tokens_per_min: number | null;
+  estimated_depletion_at: string | null;
+}
+
+/** 团队预算调整请求体。 */
+export interface TeamBudgetPatch {
+  max_total_tokens?: number;
+  max_wall_time_seconds?: number;
+  max_llm_calls?: number;
+  max_cost?: number;
+  max_parallel_llm_calls?: number;
+}
+
+/** 团队预算调整后响应（含 needs_resume 标记）。 */
+export interface TeamBudgetPatchResponse {
+  budget: BudgetState;
+  needs_resume: boolean;
+}
+
+/** Session 预算调整请求体。 */
+export interface SessionBudgetPatch {
+  max_total_tokens?: number;
+  max_wall_time_seconds?: number;
+  max_llm_calls?: number;
+  max_cost?: number;
 }

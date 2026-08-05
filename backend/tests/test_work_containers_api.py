@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 
@@ -19,6 +20,7 @@ from app.core.enums import EventType  # noqa: E402
 from app.core.models import (  # noqa: E402
     ExecutionEvent,
     SessionMessage,
+    SessionProgressSignal,
     Task,
     TaskBudget,
     TaskRun,
@@ -618,3 +620,265 @@ def test_preset_creation_rolls_back_all_records_on_mid_transaction_failure(pg_en
     with Session(pg_engine) as database:
         assert database.query(WorkContainer).filter_by(idempotency_key="team-atomic-failure").count() == 0
         assert database.query(Task).filter(Task.name.like("原子失败验证%")).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# ITEM 5 — 私有上下文跨Session隔离
+# ---------------------------------------------------------------------------
+
+
+def _send_msg(
+    c: TestClient,
+    container_id: str,
+    recipient_id: str,
+    content: str,
+    *,
+    sender_session_id: str | None = None,
+    kind: str = "message",
+    idempotency_key: str | None = None,
+) -> dict:
+    """Send a message to a session inside a container."""
+    body: dict = {"kind": kind, "content": content, "message_type": kind}
+    if sender_session_id is not None:
+        body["sender_session_id"] = sender_session_id
+    headers = dict(AUTH)
+    if idempotency_key is not None:
+        body["idempotency_key"] = idempotency_key
+    resp = c.post(
+        f"/api/work-containers/{container_id}/sessions/{recipient_id}/messages",
+        headers=headers,
+        json=body,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def _add_progress(db, session_id: uuid.UUID, run_id: uuid.UUID, **kwargs) -> None:
+    """Insert a progress signal for a session."""
+    signal = SessionProgressSignal(
+        session_id=session_id,
+        run_id=run_id,
+        summary=kwargs.pop("summary", None),
+        milestone=kwargs.pop("milestone", None),
+        completed_items=kwargs.pop("completed_items", []),
+        next_step=kwargs.pop("next_step", None),
+        blocked=kwargs.pop("blocked", False),
+        blocker_reason=kwargs.pop("blocker_reason", None),
+        needs_operator=kwargs.pop("needs_operator", False),
+        evidence=kwargs.pop("evidence", None),
+        iteration=kwargs.pop("iteration", 0),
+    )
+    db.add(signal)
+    db.flush()
+
+
+def test_private_context_not_in_other_session_transcript(client, pg_session):
+    """Session A's transcript must NOT contain session B's private_context,
+    and vice versa. Each session's own private_context IS visible via the
+    session object (include_private=True), but must not leak into the other
+    session's response at all."""
+    c, _ = client
+    container = _container(c, "私有上下文隔离测试")
+
+    secret_a = "A-SECRET-KEY-NEVER-LEAK-42"
+    secret_b = "B-SECRET-KEY-NEVER-LEAK-99"
+
+    a = _session(c, container["id"], key="session-a", role="Session A",
+                 private_context=secret_a)
+    b = _session(c, container["id"], key="session-b", role="Session B",
+                 private_context=secret_b)
+
+    sid_a = a["session"]["id"]
+    sid_b = b["session"]["id"]
+
+    # --- GET session A: must contain A's own private_context, but NOT B's ---
+    resp_a = c.get(
+        f"/api/work-containers/{container['id']}/sessions/{sid_a}",
+        headers=AUTH,
+    )
+    assert resp_a.status_code == 200
+    raw_a = json.dumps(resp_a.json(), ensure_ascii=False)
+    assert secret_a in raw_a, "Session A response must include its own private_context"
+    assert secret_b not in raw_a, (
+        "Session A response must NOT contain session B's private_context"
+    )
+
+    # --- GET session B: must contain B's own private_context, but NOT A's ---
+    resp_b = c.get(
+        f"/api/work-containers/{container['id']}/sessions/{sid_b}",
+        headers=AUTH,
+    )
+    assert resp_b.status_code == 200
+    raw_b = json.dumps(resp_b.json(), ensure_ascii=False)
+    assert secret_b in raw_b, "Session B response must include its own private_context"
+    assert secret_a not in raw_b, (
+        "Session B response must NOT contain session A's private_context"
+    )
+
+
+def test_handoff_does_not_leak_sender_private_context(client, pg_session):
+    """When session A sends a handoff to session B, B's transcript shows the
+    handoff content but must NOT expose A's private_context anywhere in the
+    response."""
+    c, _ = client
+    container = _container(c, "Handoff隔离测试")
+
+    secret_a = "A-HANDOFF-SECRET-DO-NOT-EXPOSE"
+    secret_b = "B-HANDOFF-RECIPIENT-SECRET"
+
+    a = _session(c, container["id"], key="sender", role="架构设计",
+                 private_context=secret_a)
+    b = _session(c, container["id"], key="recipient", role="后端实现",
+                 private_context=secret_b)
+
+    sid_a = a["session"]["id"]
+    sid_b = b["session"]["id"]
+
+    handoff_content = '{"conclusion": "请按接口契约实现REST端点并保留幂等语义"}'
+
+    # Send handoff from A → B
+    _send_msg(
+        c, container["id"], sid_b,
+        content=handoff_content,
+        sender_session_id=sid_a,
+        kind="handoff",
+    )
+
+    # GET session B transcript
+    resp_b = c.get(
+        f"/api/work-containers/{container['id']}/sessions/{sid_b}",
+        headers=AUTH,
+    )
+    assert resp_b.status_code == 200
+    body_b = resp_b.json()
+    raw_b = json.dumps(body_b, ensure_ascii=False)
+
+    # B's transcript must include the handoff content
+    assert "请按接口契约实现REST端点并保留幂等语义" in raw_b, (
+        "B's transcript must show the handoff conclusion"
+    )
+
+    # B's own private_context is visible (in session dict)
+    assert secret_b in raw_b, "B's own private_context should be visible"
+
+    # A's private_context must NOT leak into B's response
+    assert secret_a not in raw_b, (
+        "B's transcript/handoff response must NOT contain A's private_context"
+    )
+
+    # Also verify: A's transcript does NOT contain B's private_context
+    resp_a = c.get(
+        f"/api/work-containers/{container['id']}/sessions/{sid_a}",
+        headers=AUTH,
+    )
+    assert resp_a.status_code == 200
+    raw_a = json.dumps(resp_a.json(), ensure_ascii=False)
+    assert secret_b not in raw_a, (
+        "A's transcript must NOT contain B's private_context"
+    )
+
+    # Cross-check: transcript entries should not have a "private_context" key
+    assert all(
+        "private_context" not in entry for entry in body_b["transcript"]
+    ), "Transcript entries must not expose private_context key"
+
+
+def test_container_detail_excludes_private_context(client, pg_session):
+    """GET /api/work-containers/{id} must show shared_context but must NOT
+    expose any session's private_context in the sessions array (the container
+    detail uses include_private=False for session dicts)."""
+    c, _ = client
+    container = _container(c, "容器详情隔离测试")
+
+    secret_a = "A-CONTAINER-SECRET-NO-EXPOSE"
+    secret_b = "B-CONTAINER-SECRET-NO-EXPOSE"
+    shared = container.get("shared_context", "")
+
+    _session(c, container["id"], key="a", role="Session A", private_context=secret_a)
+    _session(c, container["id"], key="b", role="Session B", private_context=secret_b)
+
+    resp = c.get(f"/api/work-containers/{container['id']}", headers=AUTH)
+    assert resp.status_code == 200
+    body = resp.json()
+    raw = json.dumps(body, ensure_ascii=False)
+
+    # shared_context must be visible
+    assert shared in raw, "Container detail must include shared_context"
+
+    # No session's private_context must appear
+    assert secret_a not in raw, (
+        "Container detail must NOT expose session A's private_context"
+    )
+    assert secret_b not in raw, (
+        "Container detail must NOT expose session B's private_context"
+    )
+
+    # Verify sessions array exists and has entries
+    assert "sessions" in body
+    assert len(body["sessions"]) >= 2
+    for s in body["sessions"]:
+        assert "private_context" not in s, (
+            f"Session {s.get('role')} must NOT have private_context in container detail"
+        )
+
+
+def test_progress_endpoint_excludes_private_context(client, pg_session):
+    """GET /api/work-containers/{id}/progress must NOT leak any session's
+    private_context in the progress data, milestones, or next_focus."""
+    c, _ = client
+    container = _container(c, "进度端点隔离测试")
+
+    secret_a = "A-PROGRESS-SECRET-HIDDEN"
+    secret_b = "B-PROGRESS-SECRET-HIDDEN"
+
+    a = _session(c, container["id"], key="pa", role="Session A",
+                 private_context=secret_a)
+    b = _session(c, container["id"], key="pb", role="Session B",
+                 private_context=secret_b)
+
+    sid_a = uuid.UUID(a["session"]["id"])
+    sid_b = uuid.UUID(b["session"]["id"])
+    run_id_a = uuid.UUID(a["session"]["current_run_id"])
+    run_id_b = uuid.UUID(b["session"]["current_run_id"])
+
+    # Add progress signals with benign data (no private_context embedded)
+    _add_progress(
+        pg_session, sid_a, run_id_a,
+        milestone="完成了3/5项任务",
+        summary="Session A 正在推进",
+        next_step="继续实现功能",
+        completed_items=["task1", "task2", "task3"],
+        iteration=1,
+    )
+    _add_progress(
+        pg_session, sid_b, run_id_b,
+        milestone="数据模型已就绪",
+        summary="Session B 已完成数据层",
+        next_step="对接API层",
+        completed_items=["model.py", "migration.sql"],
+        iteration=2,
+    )
+    pg_session.commit()
+
+    resp = c.get(f"/api/work-containers/{container['id']}/progress", headers=AUTH)
+    assert resp.status_code == 200
+    body = resp.json()
+    raw = json.dumps(body, ensure_ascii=False)
+
+    # No private_context must appear anywhere in the progress response
+    assert secret_a not in raw, (
+        "Progress response must NOT leak session A's private_context"
+    )
+    assert secret_b not in raw, (
+        "Progress response must NOT leak session B's private_context"
+    )
+
+    # Verify per-session progress entries don't have private_context field
+    for sp in body.get("sessions", []):
+        assert "private_context" not in sp, (
+            f"Progress session {sp.get('role')} must NOT have private_context field"
+        )
+
+    # Verify benign data is present
+    assert body["team_summary"]["total"] == 2
+    assert len(body["recent_milestones"]) == 2

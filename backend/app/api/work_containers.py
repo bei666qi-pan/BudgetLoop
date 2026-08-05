@@ -18,13 +18,20 @@ from app.api.common import DEFAULT_ACCEPTANCE_CRITERIA, budget_snapshot_dict, cr
 from app.api.runs import _transition
 from app.api.tasks import BudgetSpec, _enqueue_or_warn
 from app.core.db import get_db
+from app.collaboration.service import (
+    acknowledge_message,
+    create_message_with_validation,
+    validate_handoff_content,
+)
 from app.core.enums import (
     ContainerLifecycle,
     MessageDeliveryState,
     RunStatus,
     SessionMessageKind,
+    SessionMessageType,
     Strategy,
     TaskTemplate,
+    TERMINAL_STATUSES,
     WorkspacePolicy,
 )
 from app.core.models import (
@@ -37,6 +44,7 @@ from app.core.models import (
     utcnow,
 )
 from app.execution_engines import DEFAULT_ENGINE_ID, engine_preflight, get_engine
+from app.core.security import require_token
 
 router = APIRouter(tags=["work-containers"])
 
@@ -120,7 +128,9 @@ class CreateSessionMessageRequest(BaseModel):
 
     sender_session_id: uuid.UUID | None = None
     kind: SessionMessageKind = SessionMessageKind.MESSAGE
+    message_type: SessionMessageType = SessionMessageType.MESSAGE
     content: str = Field(min_length=1, max_length=8_000)
+    idempotency_key: str | None = Field(default=None, max_length=100)
     metadata: dict = Field(default_factory=dict)
 
     @field_validator("content")
@@ -130,6 +140,12 @@ class CreateSessionMessageRequest(BaseModel):
         if not value:
             raise ValueError("must not be blank")
         return value
+
+
+class AcknowledgeMessageRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    session_id: uuid.UUID
 
 
 def _container_or_404(session: Session, container_id: uuid.UUID) -> WorkContainer:
@@ -206,6 +222,30 @@ def _counts(items: list[WorkSession]) -> dict:
 
 def _container_dict(container: WorkContainer, *, include_context: bool = True) -> dict:
     items = list(container.sessions)
+    statuses = [_runtime_status(item) for item in items]
+    active_count = sum(s not in {t.value for t in TERMINAL_STATUSES} for s in statuses)
+    alert_count = sum(1 for s in statuses if s in {"FAILED", "BUDGET_EXHAUSTED"})
+    terminal_values = {t.value for t in TERMINAL_STATUSES}
+    running = sum(s not in terminal_values and s != "PENDING" for s in statuses)
+    pending = sum(s == "PENDING" for s in statuses)
+    failed = sum(s in {"FAILED", "BUDGET_EXHAUSTED"} for s in statuses)
+    paused = sum(s == "PAUSED" for s in statuses)
+
+    if container.lifecycle_state == ContainerLifecycle.PAUSED.value:
+        team_status = "paused"
+    elif container.lifecycle_state in (ContainerLifecycle.COMPLETED.value, ContainerLifecycle.ARCHIVED.value):
+        team_status = container.lifecycle_state
+    elif failed > 0:
+        team_status = "attention"
+    elif paused > 0 and running == 0:
+        team_status = "paused"
+    elif running > 0:
+        team_status = "running"
+    elif pending > 0:
+        team_status = "pending"
+    else:
+        team_status = "idle"
+
     value = {
         "id": str(container.id),
         "name": container.name,
@@ -215,6 +255,9 @@ def _container_dict(container: WorkContainer, *, include_context: bool = True) -
         "default_workspace_policy": container.default_workspace_policy,
         "preset_id": container.preset_id,
         "preset_version": container.preset_version,
+        "team_status": team_status,
+        "active_session_count": active_count,
+        "alert_count": alert_count,
         "counts": _counts(items),
         "sessions": [_session_dict(item) for item in items],
         "created_at": container.created_at.isoformat(),
@@ -236,8 +279,12 @@ def _message_dict(message: SessionMessage) -> dict:
         "recipient_role": message.recipient_session.role if message.recipient_session else None,
         "author_type": message.author_type,
         "kind": message.kind,
+        "message_type": message.message_type,
         "content": message.content,
         "delivery_state": message.delivery_state,
+        "status": message.delivery_state,  # alias for frontend convenience
+        "acknowledged_at": message.acknowledged_at.isoformat() if message.acknowledged_at else None,
+        "idempotency_key": message.idempotency_key,
         "metadata": message.message_metadata or {},
         "created_at": message.created_at.isoformat(),
         "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
@@ -281,7 +328,12 @@ def create_work_container(
 
 @router.get("/work-containers/{container_id}")
 def get_work_container(container_id: uuid.UUID, session: Session = Depends(get_db)) -> dict:
-    return _container_dict(_container_or_404(session, container_id))
+    container = _container_or_404(session, container_id)
+    result = _container_dict(container)
+    # Enrich with team observatory fields (team_status, usage_summary, progress_summary)
+    from app.api.team_observatory import _enrich_container_dict
+    result.update(_enrich_container_dict(container, session))
+    return result
 
 
 @router.patch("/work-containers/{container_id}")
@@ -473,42 +525,55 @@ def create_session_message(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=100)] = None,
 ) -> dict:
     recipient = _session_or_404(session, container_id, session_id)
-    if idempotency_key:
-        existing = session.execute(
-            select(SessionMessage)
-            .options(
-                selectinload(SessionMessage.sender_session),
-                selectinload(SessionMessage.recipient_session),
-            )
-            .where(
-                SessionMessage.container_id == container_id,
-                SessionMessage.idempotency_key == idempotency_key,
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            return {"message": _message_dict(existing), "created": False}
 
-    sender = None
+    # Body-level idempotency_key takes precedence over header
+    effective_key = body.idempotency_key or idempotency_key
+
+    sender_id = None
+    author_type = "operator"
     if body.sender_session_id is not None:
         sender = _session_or_404(session, container_id, body.sender_session_id)
-        if sender.id == recipient.id:
-            raise HTTPException(status_code=422, detail="sender and recipient sessions must differ")
-    message = SessionMessage(
-        container_id=container_id,
-        sender_session_id=sender.id if sender else None,
-        recipient_session_id=recipient.id,
-        author_type="session" if sender else "operator",
-        kind=body.kind.value,
-        content=body.content,
-        delivery_state=MessageDeliveryState.QUEUED.value,
-        idempotency_key=idempotency_key,
-        message_metadata=body.metadata,
-    )
-    session.add(message)
+        sender_id = sender.id
+        author_type = "session"
+
+    try:
+        # Validate handoff content structure (only for handoff message type)
+        content = body.content
+        if body.message_type == SessionMessageType.HANDOFF:
+            try:
+                content = validate_handoff_content(body.content)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "handoff-content-invalid", "message": str(exc)},
+                )
+
+        message, created = create_message_with_validation(
+            session,
+            container_id,
+            recipient.id,
+            content,
+            sender_session_id=sender_id,
+            kind=body.kind.value,
+            message_type=body.message_type.value,
+            idempotency_key=effective_key,
+            metadata=body.metadata,
+            author_type=author_type,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "rate-limit-exceeded" or detail == "auto-reply-round-limit-exceeded" or detail == "inbox-token-cap-exceeded":
+            raise HTTPException(status_code=429, detail=detail)
+        raise HTTPException(status_code=422, detail=detail)
+
     recipient.container.updated_at = utcnow()
     session.commit()
-    session.refresh(message)
-    return {"message": _message_dict(message), "created": True}
+    if created:
+        session.refresh(message)
+    return {
+        "message": _message_dict(message),
+        "created": created,
+    }
 
 
 @router.post("/work-containers/{container_id}/sessions/{session_id}/pause")
@@ -521,3 +586,29 @@ def pause_work_session(
     item.updated_at = utcnow()
     session.commit()
     return {**result, "session_id": str(item.id)}
+
+
+@router.post("/work-containers/{container_id}/messages/{msg_id}/acknowledge")
+def acknowledge_session_message(
+    container_id: uuid.UUID,
+    msg_id: uuid.UUID,
+    body: AcknowledgeMessageRequest,
+    session: Session = Depends(get_db),
+    _auth: None = Depends(require_token),
+) -> dict:
+    """Atomically set acknowledged_at and status='acknowledged' only if
+    the current delivery_state is 'injected' and the message belongs to
+    the acknowledging session."""
+    updated = acknowledge_message(session, msg_id, body.session_id)
+    if updated is None:
+        existing = session.get(SessionMessage, msg_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="message not found")
+        detail = (
+            "message not in injectable state"
+            if existing.delivery_state != MessageDeliveryState.INJECTED.value
+            else "message does not belong to the acknowledging session"
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    session.commit()
+    return {"message": _message_dict(updated)}

@@ -2,6 +2,7 @@ import type {
   ContainerLifecycle,
   RunStatus,
   SessionTranscriptEntry,
+  TeamStatus,
   WorkContainer,
   WorkSessionSummary,
 } from "./types";
@@ -94,6 +95,34 @@ export function availableHandoffRecipients(
   selectedSessionId: string,
 ) {
   return sessions.filter((session) => session.id !== selectedSessionId);
+}
+
+/**
+ * 容器列表页的团队状态标签（与 observatory 详情页的 TEAM_STATUS_LABELS 略有不同，
+ * 列表页 "completed" 显示"已停止"而非"已完成"，"active" 显示"运行中"同为一致）。
+ */
+export const CONTAINER_TEAM_STATUS_LABELS: Record<TeamStatus, string> = {
+  active: "运行中",
+  paused: "已暂停",
+  blocked: "阻塞",
+  completed: "已停止",
+};
+
+export function teamStatusTone(status: TeamStatus | null | undefined): string {
+  if (status === "active") return "badge-success";
+  if (status === "paused") return "badge-warning";
+  if (status === "blocked") return "badge-critical";
+  return "badge-muted";
+}
+
+/** 当 API 未返回 team_status 时，从 lifecycle_state 和 counts 推导。 */
+export function deriveTeamStatus(container: WorkContainer): TeamStatus {
+  if (container.team_status) return container.team_status;
+  if (container.lifecycle_state === "completed" || container.lifecycle_state === "archived") return "completed";
+  if (container.lifecycle_state === "paused") return "paused";
+  if (container.counts.attention > 0) return "blocked";
+  if (container.counts.running > 0) return "active";
+  return "completed";
 }
 
 export function presentWorktreePath(path: string | null): string | null {

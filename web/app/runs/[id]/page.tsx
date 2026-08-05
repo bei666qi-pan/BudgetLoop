@@ -15,7 +15,7 @@ import { formatCost, formatDurationMs, formatTokens } from "@/lib/format";
 import { statusClass, STATUS_LABELS, TERMINAL_STATUS } from "@/lib/presentation";
 import { budgetUsageRatio, folderAccessMode, pressureExplanation, runPhaseLabel } from "@/lib/run-presentation";
 import { ProgressBar, Tabs } from "@/components/ui";
-import type { ApprovalAction, ApprovalPayload, BudgetDetail, ExecutionEvent, LlmCall, RunDetail } from "@/lib/types";
+import type { ApprovalAction, ApprovalPayload, BudgetDetail, ContainerTeamInfo, ExecutionEvent, LlmCall, RunDetail, SessionProgressSignal } from "@/lib/types";
 
 type Tab = "observatory" | "timeline" | "calls" | "budget" | "info";
 const PHASE_LABELS: Record<string, string> = { scan: "扫描代码库", analyze: "分析问题", modify: "修改代码", verify: "执行验证", repair: "修复回归", summarize: "总结交付" };
@@ -42,6 +42,8 @@ export default function RunDetailPage() {
   const lastSeq = useRef(0);
   const dismissedApprovalId = useRef<string | null>(null);
   const resolvedApprovalIds = useRef(new Set<string>());
+  const [containerInfo, setContainerInfo] = useState<ContainerTeamInfo | null>(null);
+  const [progressSignal, setProgressSignal] = useState<SessionProgressSignal | null>(null);
 
   const load = useCallback(async (initial = false) => {
     if (initial) setLoading(true);
@@ -64,7 +66,31 @@ export default function RunDetailPage() {
     if (initial) setLoading(false);
   }, [runId]);
 
+  // 团队上下文：当 Run 属于某个容器时，获取容器信息和进度信号
+  const loadTeamContext = useCallback(async (containerId: string) => {
+    try {
+      const container = await apiFetch<ContainerTeamInfo>(`/api/work-containers/${containerId}`);
+      setContainerInfo(container);
+    } catch {
+      setContainerInfo(null);
+    }
+  }, []);
+
+  const loadProgressSignal = useCallback(async (runIdToLoad: string, sessionId: string | null) => {
+    if (!sessionId) return;
+    try {
+      const signals = await apiFetch<{ signals: SessionProgressSignal[] }>(
+        `/api/sessions/${sessionId}/progress-signals?run_id=${runIdToLoad}`
+      );
+      const list = signals?.signals ?? [];
+      setProgressSignal(list.length > 0 ? list[list.length - 1] : null);
+    } catch {
+      setProgressSignal(null);
+    }
+  }, []);
+
   useEffect(() => { void load(true); const timer = window.setInterval(() => void load(false), 3000); return () => window.clearInterval(timer); }, [load]);
+  useEffect(() => { const containerId = detail?.run?.work_container_id; const sessionId = detail?.run?.work_session_id; if (containerId) { void loadTeamContext(containerId); void loadProgressSignal(detail!.run.id, sessionId ?? null); } }, [detail, loadTeamContext, loadProgressSignal]);
 
   const run = detail?.run;
   const task = detail?.task;
@@ -100,10 +126,56 @@ export default function RunDetailPage() {
 
   return (
     <div className="page-shell animate-in space-y-5">
-      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">{run?.work_container_id ? <Link href={`/containers/${run.work_container_id}`} className="inline-flex items-center gap-1 hover:text-accent"><ArrowLeft className="h-3.5 w-3.5" />Agent Team · {run.work_session_role}</Link> : <Link href="/" className="inline-flex items-center gap-1 hover:text-accent"><ArrowLeft className="h-3.5 w-3.5" />任务工作台</Link>}<span>/</span><span>运行指挥台</span></div>
+      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">{run?.work_container_id ? <><Link href="/containers" className="inline-flex items-center gap-1 hover:text-accent">Agent Team</Link><span>/</span><Link href={`/containers/${run.work_container_id}`} className="inline-flex items-center gap-1 hover:text-accent">{containerInfo?.name ?? "…"}</Link><span>/</span><span>{run.work_session_role ?? "Session"}</span></> : <Link href="/" className="inline-flex items-center gap-1 hover:text-accent"><ArrowLeft className="h-3.5 w-3.5" />任务工作台</Link>}<span>/</span><span>运行指挥台</span></div>
       <header className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-heading truncate">{task?.name ?? "运行指挥台"}</h1><span className={`badge ${statusClass(run?.status)}`}><span className={`h-1.5 w-1.5 rounded-full bg-current ${!terminal ? "animate-pulse-subtle" : ""}`} />{STATUS_LABELS[run?.status ?? "PENDING"]}</span></div><p className="mt-2 break-all font-mono text-xs text-muted-foreground">{runId}</p></div><div className="flex flex-wrap gap-2">{terminal ? <Link href={`/runs/${runId}/report`} className="btn btn-primary">查看执行结果<ArrowRight className="h-4 w-4" /></Link> : <><button onClick={() => void runAction("pause")} disabled={actionBusy} className="btn btn-secondary"><Pause className="h-4 w-4" />{run?.status === "PAUSED" ? "继续" : "暂停"}</button><button onClick={() => void runAction("cancel")} disabled={actionBusy} className="btn btn-destructive"><CircleStop className="h-4 w-4" />取消运行</button></>}</div></header>
 
       {error ? <div role="alert" className="rounded-lg border border-critical/20 bg-critical/5 p-3 text-sm text-critical">{error}</div> : null}
+
+      {run?.work_container_id && containerInfo ? (
+        <section className="surface p-4" role="status">
+          <p className="text-sm font-semibold text-foreground">
+            此 Run 属于团队 <Link href={`/containers/${containerInfo.id}`} className="font-bold text-accent hover:underline">{containerInfo.name}</Link>，当前团队状态: <span className={`badge ${containerInfo.lifecycle_state === "active" ? "badge-success" : containerInfo.lifecycle_state === "paused" ? "badge-warning" : "badge-muted"}`}>{containerInfo.team_status ?? { active: "运行中", paused: "已暂停", completed: "已完成", archived: "已归档" }[containerInfo.lifecycle_state]}</span>
+          </p>
+        </section>
+      ) : null}
+
+      {run?.work_container_id && progressSignal ? (
+        <section className="surface p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="section-title">Session 进度信号</h2>
+            <span className="font-mono text-xs text-muted-foreground">第 {progressSignal.iteration} 轮</span>
+          </div>
+          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg border border-border bg-muted/25 p-4">
+              <dt className="text-xs text-muted-foreground">摘要</dt>
+              <dd className="mt-1 break-all font-medium">{progressSignal.summary ?? "未上报"}</dd>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/25 p-4">
+              <dt className="text-xs text-muted-foreground">里程碑</dt>
+              <dd className="mt-1 break-all font-medium">{progressSignal.milestone ?? "未上报"}</dd>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/25 p-4">
+              <dt className="text-xs text-muted-foreground">阻塞状态</dt>
+              <dd className="mt-1 font-medium">
+                {progressSignal.blocked ? <span className={`badge badge-critical`}>已阻塞</span> : <span className={`badge badge-success`}>未阻塞</span>}
+                {progressSignal.blocker_reason ? <p className="mt-1 text-xs text-muted-foreground">{progressSignal.blocker_reason}</p> : null}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/25 p-4">
+              <dt className="text-xs text-muted-foreground">下一步</dt>
+              <dd className="mt-1 break-all font-medium">{progressSignal.next_step ?? "未上报"}</dd>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/25 p-4">
+              <dt className="text-xs text-muted-foreground">证据</dt>
+              <dd className="mt-1 break-all font-mono text-xs">{progressSignal.evidence ?? "未上报"}</dd>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/25 p-4">
+              <dt className="text-xs text-muted-foreground">需操作员</dt>
+              <dd className="mt-1 font-medium">{progressSignal.needs_operator ? <span className={`badge badge-warning`}>需要干预</span> : <span className="text-muted-foreground">否</span>}</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
         <div className="surface p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="section-title">当前活动</h2><div className={`inline-flex items-center gap-2 text-xs font-semibold ${connected ? "text-success" : "text-critical"}`}>{connected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}{connected ? "实时更新" : "连接中断"}</div></div><p className="mt-3 min-h-12 text-sm leading-relaxed text-muted-foreground">{currentActivity}</p><div className="mt-5 grid grid-cols-3 divide-x divide-border border-t border-border pt-4 text-center"><div><p className="text-xs text-muted-foreground">当前阶段</p><p className="mt-1 font-semibold">{runPhaseLabel(run?.current_phase, terminal, PHASE_LABELS)}</p></div><div><p className="text-xs text-muted-foreground">压力模式</p><p className={`mt-1 font-semibold ${pressure === "CRITICAL" ? "text-critical" : pressure === "CONSERVATIVE" ? "text-warning" : "text-success"}`}>{PRESSURE_LABELS[pressure]}</p></div><div><p className="text-xs text-muted-foreground">轮次</p><p className="mt-1 font-mono font-semibold">第 {run?.iteration ?? 0} 轮</p></div></div></div>
