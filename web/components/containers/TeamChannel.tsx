@@ -73,9 +73,18 @@ function MessageTypeIcon({ entryType }: { entryType: string }) {
 /* ── Handoff 结构化渲染 ── */
 
 function HandoffBody({ msg }: { msg: TeamChatMessage }) {
-  const meta = msg.metadata ?? {};
+  let parsed: Record<string, unknown> = {};
+  try {
+    const value = JSON.parse(msg.content) as unknown;
+    if (value && typeof value === "object" && !Array.isArray(value)) parsed = value as Record<string, unknown>;
+  } catch { /* ordinary text handoff */ }
+  const meta = { ...parsed, ...(msg.metadata ?? {}) };
   const conclusion = typeof meta.conclusion === "string" ? meta.conclusion : null;
-  const evidence = typeof meta.evidence === "string" ? meta.evidence : null;
+  const evidence = typeof meta.evidence === "string"
+    ? meta.evidence
+    : Array.isArray(meta.evidence)
+      ? meta.evidence.map(String).join("\n")
+      : null;
   const openQuestions: string[] = Array.isArray(meta.open_questions)
     ? meta.open_questions.filter((q): q is string => typeof q === "string")
     : [];
@@ -481,7 +490,6 @@ export function TeamChannel({
   const [filter, setFilter] = useState<ChannelFilter>(
     selectedSessionId ?? "all",
   );
-  const seenKeys = useRef<Set<string>>(new Set());
 
   // 同步外部 session 选中到 filter
   useEffect(() => {
@@ -497,14 +505,9 @@ export function TeamChannel({
 
     for (const msg of messages) {
       const key = msg.idempotency_key ?? msg.id;
-      if (localSeen.has(key) || seenKeys.current.has(key)) continue;
+      if (localSeen.has(key)) continue;
       localSeen.add(key);
       deduped.push(msg);
-    }
-
-    // 更新全局 seen 集合
-    for (const key of localSeen) {
-      seenKeys.current.add(key);
     }
 
     // 按时间排序（最新在上）
@@ -542,7 +545,7 @@ export function TeamChannel({
   }, [selectedSessionId]);
 
   return (
-    <div className="flex min-h-0 flex-col" aria-label="团队频道">
+    <div className="flex min-h-0 flex-1 flex-col" aria-label="团队频道">
       {/* filter bar */}
       <div className="flex min-h-12 items-center justify-between border-b border-border px-4 sm:px-6">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">

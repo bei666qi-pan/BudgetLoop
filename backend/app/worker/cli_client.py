@@ -38,6 +38,8 @@ class CLIEngineClient:
         timeout: float = 300.0,
         process_factory: ProcessFactory = subprocess.Popen,
         runtime_env: dict[str, str] | None = None,
+        writable_dirs: tuple[str, ...] = (),
+        sandbox_mode: str = "workspace-write",
     ):
         self.adapter = adapter
         self.engine = adapter.engine
@@ -46,6 +48,10 @@ class CLIEngineClient:
         self.timeout = timeout
         self.process_factory = process_factory
         self.runtime_env = dict(runtime_env or {})
+        self.writable_dirs = tuple(str(Path(item).resolve()) for item in writable_dirs)
+        if sandbox_mode not in {"read-only", "workspace-write", "danger-full-access"}:
+            raise CLIEngineError(f"unsupported Codex sandbox mode: {sandbox_mode}")
+        self.sandbox_mode = sandbox_mode
         self.conversation_id: uuid.UUID | None = None
         self.native_session_id: str | None = None
         self.initial_message: str | None = None
@@ -110,6 +116,8 @@ class CLIEngineClient:
             session_id=session_id,
             model=self.model,
             is_resume=self._has_run and bool(self.native_session_id),
+            writable_dirs=self.writable_dirs,
+            sandbox_mode=self.sandbox_mode,
         )
         self._execution_status = "running"
         self._last_public_error = None
@@ -386,6 +394,9 @@ def engine_environment(
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
     }
     environment = {name: value for name, value in os.environ.items() if name in allowed_base}
     environment["HOME"] = str(home)
@@ -409,6 +420,11 @@ def engine_environment(
     managed = (runtime_env or {}).get("BUDGETLOOP_AI_MANAGED") == "1"
     if managed:
         environment["BUDGETLOOP_AI_MANAGED"] = "1"
+        bypass = ["localhost", "127.0.0.1", "::1"]
+        existing_no_proxy = environment.get("NO_PROXY") or environment.get("no_proxy") or ""
+        no_proxy = ",".join(dict.fromkeys([*bypass, *filter(None, existing_no_proxy.split(","))]))
+        environment["NO_PROXY"] = no_proxy
+        environment["no_proxy"] = no_proxy
         if engine_id == "codex":
             for name in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"):
                 value = (runtime_env or {}).get(name)
@@ -446,7 +462,7 @@ def _write_managed_codex_config(home: Path, environment: dict[str, str]) -> None
     config = (
         f"model = {json.dumps(model)}\n"
         'model_provider = "budgetloop"\n'
-        'model_reasoning_effort = "xhigh"\n\n'
+        "\n"
         '[model_providers.budgetloop]\n'
         'name = "BudgetLoop Managed AI"\n'
         f"base_url = {json.dumps(base_url)}\n"
@@ -456,7 +472,7 @@ def _write_managed_codex_config(home: Path, environment: dict[str, str]) -> None
         'supports_websockets = false\n'
     )
     path = home / "config.toml"
-    temporary = home / ".config.toml.tmp"
+    temporary = home / f".config.toml.{uuid.uuid4().hex}.tmp"
     temporary.write_text(config, encoding="utf-8")
     temporary.chmod(0o600)
     temporary.replace(path)
@@ -467,7 +483,7 @@ def _write_managed_gemini_config(home: Path) -> None:
     config_dir = home / ".gemini"
     config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = config_dir / "settings.json"
-    temporary = config_dir / ".settings.json.tmp"
+    temporary = config_dir / f".settings.json.{uuid.uuid4().hex}.tmp"
     temporary.write_text(
         json.dumps(
             {"security": {"auth": {"selectedType": "gemini-api-key"}}},

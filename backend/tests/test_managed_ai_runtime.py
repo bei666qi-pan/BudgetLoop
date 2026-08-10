@@ -343,7 +343,7 @@ def test_cli_environment_injects_only_scoped_runtime(monkeypatch, tmp_path) -> N
     assert "UNSAFE" not in environment
     config = (tmp_path / "state" / "codex" / "config.toml").read_text(encoding="utf-8")
     assert 'wire_api = "responses"' in config
-    assert 'model_reasoning_effort = "xhigh"' in config
+    assert "model_reasoning_effort" not in config
     assert "scoped-token" not in config
 
 

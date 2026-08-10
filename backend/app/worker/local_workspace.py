@@ -7,6 +7,7 @@ resolved run/worktree directory; they never choose or reuse another run's path.
 from __future__ import annotations
 
 import os
+import hashlib
 import shutil
 import subprocess
 import uuid
@@ -34,7 +35,25 @@ class LocalWorkspaceManager:
         folder_access: str = "isolated",
         project_dir: str | Path | None = None,
     ) -> WorkspaceHandle:
-        del working_dir, project_dir
+        del working_dir
+        if folder_access == "full_access" and project_dir is not None:
+            # CLI engines run natively on the host. Team sessions must still
+            # receive a server-owned worktree so an agent cannot checkpoint
+            # unrelated changes from the operator's root working tree.
+            repo = Path(str(project_dir)).expanduser().resolve()
+            self._ensure_git_repository(repo, commit_existing=False)
+            selected = repo
+            branch = None
+            worktree_path = None
+            if worktree_session_id is not None:
+                branch, selected = self._create_worktree(repo, worktree_session_id)
+                worktree_path = str(selected)
+            return self._handle(
+                uuid.UUID(str(run_id)).hex,
+                selected,
+                worktree_branch=branch,
+                worktree_path=worktree_path,
+            )
         if folder_access != "isolated":
             # 本地工作区无法 bind-mount 宿主目录；fail-closed，绝不静默回退为隔离
             raise WorkspaceError(
@@ -63,7 +82,7 @@ class LocalWorkspaceManager:
             )
         else:
             repository.mkdir(mode=0o700)
-        self._ensure_git_repository(repository)
+        self._ensure_git_repository(repository, commit_existing=True)
 
         selected = repository
         branch = None
@@ -91,19 +110,21 @@ class LocalWorkspaceManager:
         if workspace_id != expected_id:
             raise WorkspaceError("local workspace id does not belong to this run")
         repository = self.root / safe_run_id / "repository"
-        if not repository.is_dir():
-            raise WorkspaceError(f"local workspace not found: {expected_id}")
         selected = repository
         worktree_path = None
         if worktree_branch:
             candidate = Path(working_dir).expanduser().resolve()
             run_root = self.root / safe_run_id
-            if candidate == Path("/workspace") or run_root not in candidate.parents:
+            full_access_root = self.root / "full-access-worktrees"
+            owned_path = run_root in candidate.parents or full_access_root in candidate.parents
+            if candidate == Path("/workspace") or not owned_path:
                 raise WorkspaceError("local worktree path does not belong to this run")
             if not candidate.is_dir():
                 raise WorkspaceError(f"local worktree not found: {worktree_branch}")
             selected = candidate
             worktree_path = str(candidate)
+        elif not repository.is_dir():
+            raise WorkspaceError(f"local workspace not found: {expected_id}")
         return self._handle(
             safe_run_id,
             selected,
@@ -135,25 +156,44 @@ class LocalWorkspaceManager:
             timeout=60,
         )
 
-    def _ensure_git_repository(self, repository: Path) -> None:
+    def _ensure_git_repository(self, repository: Path, *, commit_existing: bool) -> None:
         inside = self._run_git(repository, "rev-parse", "--is-inside-work-tree")
         if inside.returncode != 0:
             initialized = self._run_git(repository, "init", "-q")
             if initialized.returncode != 0:
                 raise WorkspaceError(f"git init failed: {initialized.stderr[:500]}")
+            commit_existing = True
         self._run_git(repository, "config", "user.email", "budgetloop@local")
         self._run_git(repository, "config", "user.name", "BudgetLoop")
-        self._run_git(repository, "add", "-A")
-        committed = self._run_git(repository, "commit", "-q", "-m", "init", "--allow-empty")
-        if committed.returncode != 0:
-            raise WorkspaceError(f"initial commit failed: {committed.stderr[:500]}")
+        if commit_existing:
+            self._run_git(repository, "add", "-A")
+            committed = self._run_git(repository, "commit", "-q", "-m", "init", "--allow-empty")
+            if committed.returncode != 0:
+                raise WorkspaceError(f"initial commit failed: {committed.stderr[:500]}")
 
     def _create_worktree(self, repository: Path, session_id: str) -> tuple[str, Path]:
         safe_session_id = uuid.UUID(str(session_id)).hex
         branch = f"bl/session-{safe_session_id[:12]}"
-        target = repository.parent / "worktrees" / safe_session_id
+        repository_key = hashlib.sha256(str(repository.resolve()).encode("utf-8")).hexdigest()[:20]
+        target = self.root / "full-access-worktrees" / repository_key / safe_session_id
         target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        result = self._run_git(repository, "worktree", "add", "-b", branch, str(target), "HEAD")
+        if target.is_dir():
+            current_branch = self._run_git(target, "branch", "--show-current")
+            if current_branch.returncode == 0 and current_branch.stdout.strip() == branch:
+                return branch, target
+            raise WorkspaceError(f"existing worktree does not match expected branch: {target}")
+        branch_exists = self._run_git(repository, "show-ref", "--verify", f"refs/heads/{branch}")
+        if branch_exists.returncode == 0:
+            result = self._run_git(
+                repository,
+                "worktree",
+                "add",
+                "--force",
+                str(target),
+                branch,
+            )
+        else:
+            result = self._run_git(repository, "worktree", "add", "-b", branch, str(target), "HEAD")
         if result.returncode != 0:
             raise WorkspaceError(f"git worktree setup failed: {result.stderr[:500]}")
         return branch, target

@@ -68,6 +68,7 @@ class GatewayClient:
         return httpx.Client(
             timeout=timeout,
             transport=self._transport,
+            trust_env=False,
             follow_redirects=False,
             headers=self._headers(),
         )
@@ -145,12 +146,14 @@ class GatewayClient:
             "max_tokens": 4096,
             "response_format": {"type": "json_object"},
         })
-        planning_timeout = self.config.read_timeout_seconds
-        if self.config.reasoning_effort or self.config.thinking_enabled:
-            planning_timeout = max(
-                planning_timeout,
-                self.REASONING_RECOMMENDATION_TIMEOUT_SECONDS,
-            )
+        # Structured recommendations are generation requests, not reachability
+        # probes. Compatible gateways may route to a reasoning-capable model
+        # even when no explicit reasoning extension is configured, so the
+        # ordinary 8s gateway read timeout is too short for valid JSON output.
+        planning_timeout = max(
+            self.config.read_timeout_seconds,
+            self.REASONING_RECOMMENDATION_TIMEOUT_SECONDS,
+        )
         try:
             with self._client(read_timeout_seconds=planning_timeout) as client:
                 response = client.post(

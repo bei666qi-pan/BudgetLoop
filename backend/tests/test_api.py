@@ -118,6 +118,16 @@ def test_second_run_increments_attempt(client):
     assert run["model_config"] == {"model": "x"}
 
 
+def test_second_run_without_model_override_preserves_execution_config(client):
+    c, _ = client
+    data = _create_task(c)
+    original = c.get(f"/api/runs/{data['run_id']}", headers=AUTH).json()["run"]["model_config"]
+    resp = c.post(f"/api/tasks/{data['task_id']}/runs", json={}, headers=AUTH)
+    assert resp.status_code == 201, resp.text
+    rerun = c.get(f"/api/runs/{resp.json()['run_id']}", headers=AUTH).json()["run"]
+    assert rerun["model_config"] == original
+
+
 def test_list_tasks_includes_latest_run(client):
     c, _ = client
     data = _create_task(c)

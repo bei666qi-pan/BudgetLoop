@@ -126,7 +126,31 @@ import type {
   TeamBudgetPatch,
   TeamBudgetPatchResponse,
   SessionBudgetPatch,
+  JudgeState,
+  TeamChatMessage,
 } from "./types";
+
+export async function fetchJudgeState(containerId: string): Promise<JudgeState> {
+  return apiFetch<JudgeState>(`/api/work-containers/${containerId}/judge`);
+}
+
+export async function resumeJudge(
+  containerId: string,
+  evidence: Record<string, unknown> = {},
+): Promise<JudgeState> {
+  return apiFetch<JudgeState>(`/api/work-containers/${containerId}/judge/resume`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey() },
+    body: JSON.stringify({ evidence }),
+  });
+}
+
+export async function fetchTeamMessages(containerId: string): Promise<TeamChatMessage[]> {
+  const result = await apiFetch<{ messages: TeamChatMessage[] }>(
+    `/api/work-containers/${containerId}/messages?limit=500`,
+  );
+  return result.messages;
+}
 
 /** 获取团队进度聚合。 */
 export async function fetchTeamProgress(

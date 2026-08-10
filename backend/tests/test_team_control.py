@@ -314,7 +314,7 @@ def test_stop_with_confirmation(client):
     r = c.post(f"/api/work-containers/{cid}/stop", headers=AUTH, json={"confirmed": True})
     assert r.status_code == 200
     assert r.json()["changed"] is True
-    assert r.json()["stopped_sessions"] == 1
+    assert r.json()["stopped_sessions"] == 2
     assert r.json()["lifecycle_state"] == "completed"
 
     # Container is completed
@@ -1176,7 +1176,7 @@ def test_get_container_includes_team_status(client):
     assert "team_status" in data
     assert data["team_status"]["phase"] == "running"
     assert data["team_status"]["running"] == 1
-    assert data["team_status"]["total_sessions"] == 1
+    assert data["team_status"]["total_sessions"] == 2
 
     assert "usage_summary" in data
     assert "tokens" in data["usage_summary"]
@@ -1184,8 +1184,8 @@ def test_get_container_includes_team_status(client):
     assert "calls" in data["usage_summary"]
 
     assert "progress_summary" in data
-    assert len(data["progress_summary"]) == 1
-    assert data["progress_summary"][0]["role"] == "开发"
+    assert len(data["progress_summary"]) == 2
+    assert {item["role"] for item in data["progress_summary"]} == {"开发", "汇总裁判"}
 
 
 def test_get_container_team_status_paused(client):

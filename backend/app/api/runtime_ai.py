@@ -246,6 +246,7 @@ def _native_timeout(config: GatewayConfig) -> httpx.Timeout:
 def _native_http_client(config: GatewayConfig) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=_native_timeout(config),
+        trust_env=False,
         follow_redirects=False,
         headers=_native_headers(config),
     )

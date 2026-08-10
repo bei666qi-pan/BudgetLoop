@@ -402,6 +402,9 @@ def test_create_worktree_uses_server_uuid_and_bounded_path():
     assert path == "/workspace/.budgetloop/worktrees/11111111222233334444555555555555"
     command = container.exec_run.call_args[0][0][2]
     assert "git -C /workspace worktree add" in command
+    assert "worktree add --force" in command
+    assert "show-ref --verify --quiet" in command
+    assert "rev-parse --is-inside-work-tree" in command
     assert path in command
 
 

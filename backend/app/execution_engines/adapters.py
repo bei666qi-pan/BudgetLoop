@@ -82,6 +82,8 @@ class ExecutionEngineAdapter(Protocol):
         session_id: str | None = None,
         model: str | None = None,
         is_resume: bool = False,
+        writable_dirs: tuple[str, ...] = (),
+        sandbox_mode: str = "workspace-write",
     ) -> list[str]: ...
 
     def normalize_json_line(self, line: str) -> NormalizedEngineEvent | None: ...
@@ -103,6 +105,8 @@ class CLIEngineAdapter:
         session_id: str | None = None,
         model: str | None = None,
         is_resume: bool = False,
+        writable_dirs: tuple[str, ...] = (),
+        sandbox_mode: str = "workspace-write",
     ) -> list[str]:
         command = self.engine.command or self.engine.id
         if self.engine.id == "codex":
@@ -111,13 +115,15 @@ class CLIEngineAdapter:
                 "exec",
                 "--json",
                 "--sandbox",
-                "workspace-write",
+                sandbox_mode,
                 "--skip-git-repo-check",
                 "-C",
                 workdir,
             ]
             if model:
                 args.extend(["-m", model])
+            for directory in writable_dirs:
+                args.extend(["--add-dir", directory])
             if session_id and is_resume:
                 args.extend(["resume", session_id])
             args.append(prompt)
@@ -189,6 +195,8 @@ class CLIEngineAdapter:
             model=model_config.get("model"),
             timeout=float(model_config.get("agent_step_timeout", 300)),
             runtime_env=handle.runtime_env,
+            writable_dirs=tuple(model_config.get("_server_writable_dirs") or ()),
+            sandbox_mode=str(model_config.get("_server_codex_sandbox") or "workspace-write"),
         )
 
     # ------------------------------------------------------------------

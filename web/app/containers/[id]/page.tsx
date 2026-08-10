@@ -18,6 +18,7 @@ import { CreateSessionDialog } from "@/components/containers/CreateSessionDialog
 import { SessionRail } from "@/components/containers/SessionRail";
 import { TeamChannel } from "@/components/containers/TeamChannel";
 import { TeamInspector } from "@/components/containers/TeamInspector";
+import { JudgeRounds } from "@/components/containers/JudgeRounds";
 import {
   CONTAINER_LIFECYCLE_LABELS,
   lifecycleTone,
@@ -54,6 +55,7 @@ import type {
   TeamUsageSummary,
   WorkContainer,
   WorkSessionSummary,
+  JudgeState,
 } from "@/lib/types";
 
 /* ── Mobile tab type ── */
@@ -239,78 +241,23 @@ function AlertBanner({ alerts }: { alerts: TeamAlert[] }) {
 }
 
 /* ── Custom hook: SSE + polling + connection state ── */
-function useTeamStream(containerId: string, isMobile: boolean, onEvent: (event: TeamStreamEvent) => void) {
+function useTeamStream(containerId: string, _isMobile: boolean, onEvent: (event: TeamStreamEvent) => void) {
   const [connection, setConnection] = useState<ConnectionState>("connected");
   const lastSeqRef = useRef<number>(0);
-  const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const disconnectedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
-  const clearTimers = useCallback(() => {
-    if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
-    if (disconnectedTimerRef.current) { clearTimeout(disconnectedTimerRef.current); disconnectedTimerRef.current = null; }
-  }, []);
-
   const resetConnectionTimers = useCallback(() => {
     setConnection("connected");
-    clearTimers();
-    staleTimerRef.current = setTimeout(() => {
-      setConnection("stale");
-    }, 10_000);
-    disconnectedTimerRef.current = setTimeout(() => {
-      setConnection("disconnected");
-    }, 30_000);
-  }, [clearTimers]);
-
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
   }, []);
-
-  const startPolling = useCallback((interval: number) => {
-    stopPolling();
-    pollingRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(
-          `/api/control/api/work-containers/${containerId}/stream?after_seq=${lastSeqRef.current}`,
-          {
-            headers: lastSeqRef.current > 0
-              ? { "Last-Event-ID": String(lastSeqRef.current) }
-              : {},
-            cache: "no-store",
-          },
-        );
-        if (res.ok) {
-          const data: TeamStreamEvent[] = await res.json();
-          if (Array.isArray(data)) {
-            for (const event of data) {
-              if (event.seq > lastSeqRef.current) {
-                lastSeqRef.current = event.seq;
-                onEventRef.current(event);
-              }
-            }
-          }
-          resetConnectionTimers();
-        }
-      } catch {
-        // polling failed, keep last state
-      }
-    }, interval);
-  }, [containerId, resetConnectionTimers, stopPolling]);
 
   // SSE on desktop, polling only on mobile
   useEffect(() => {
-    if (isMobile) {
-      startPolling(5_000);
-      return () => { stopPolling(); clearTimers(); };
-    }
-
-    // Desktop: SSE
+    // EventSource provides the same replay/reconnect semantics on desktop and mobile.
     const es = new EventSource(`/api/control/api/work-containers/${containerId}/stream`);
     resetConnectionTimers();
 
-    es.onmessage = (event) => {
+    const receive = (event: MessageEvent) => {
       try {
         const parsed: TeamStreamEvent = JSON.parse(event.data);
         if (parsed.seq > lastSeqRef.current) {
@@ -319,40 +266,41 @@ function useTeamStream(containerId: string, isMobile: boolean, onEvent: (event: 
         }
       } catch { /* ignore malformed events */ }
     };
+    const eventTypes: TeamStreamEvent["type"][] = [
+      "session_message",
+      "session_progress",
+      "session_status_change",
+      "team_control_audit",
+      "budget_pressure_change",
+      "judge_state_changed",
+      "judge_gate_completed",
+      "judge_feedback_dispatched",
+      "judge_verdict_recorded",
+    ];
+    es.onmessage = receive;
+    if (typeof es.addEventListener === "function") {
+      eventTypes.forEach((type) => es.addEventListener(type, receive as EventListener));
+    }
 
     es.onerror = () => {
       if (es.readyState === EventSource.CLOSED) {
-        clearTimers();
         setConnection("disconnected");
-        startPolling(3_000);
+      } else {
+        setConnection("stale");
       }
     };
 
     es.onopen = () => {
-      stopPolling();
       resetConnectionTimers();
     };
 
     return () => {
-      es.close();
-      stopPolling();
-      clearTimers();
-    };
-  }, [containerId, isMobile, resetConnectionTimers, clearTimers, startPolling, stopPolling]);
-
-  // Mobile: visibilitychange pause/resume
-  useEffect(() => {
-    if (!isMobile) return;
-    const handleVisibility = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        startPolling(5_000);
+      if (typeof es.removeEventListener === "function") {
+        eventTypes.forEach((type) => es.removeEventListener(type, receive as EventListener));
       }
+      es.close();
     };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [isMobile, startPolling, stopPolling]);
+  }, [containerId, resetConnectionTimers]);
 
   return { connection };
 }
@@ -363,6 +311,9 @@ export default function TeamObservatoryDashboard() {
   const [container, setContainer] = useState<WorkContainer | null>(null);
   const [observatory, setObservatory] = useState<TeamObservatoryResponse | null>(null);
   const [channelMessages, setChannelMessages] = useState<TeamChatMessage[]>([]);
+  const [judge, setJudge] = useState<JudgeState | null>(null);
+  const [judgeLoading, setJudgeLoading] = useState(true);
+  const [judgeRefreshTick, setJudgeRefreshTick] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -385,6 +336,9 @@ export default function TeamObservatoryDashboard() {
     if (event.type === "session_message" && event.payload) {
       const msg = event.payload as unknown as TeamChatMessage;
       setChannelMessages((prev) => [...prev, msg]);
+    }
+    if (event.type.startsWith("judge_")) {
+      setJudgeRefreshTick((value) => value + 1);
     }
   }, []);
 
@@ -420,17 +374,44 @@ export default function TeamObservatoryDashboard() {
     }
   }, [id]);
 
+  const loadJudge = useCallback(async () => {
+    try {
+      setJudge(await apiFetch<JudgeState>(`/api/work-containers/${id}/judge`));
+    } catch (loadError) {
+      setActionError(loadError instanceof Error ? loadError.message : "裁判状态加载失败。");
+    } finally {
+      setJudgeLoading(false);
+    }
+  }, [id]);
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const result = await apiFetch<{ messages: TeamChatMessage[] }>(
+        `/api/work-containers/${id}/messages?limit=500`,
+      );
+      setChannelMessages(Array.isArray(result.messages) ? result.messages : []);
+    } catch (loadError) {
+      setActionError(loadError instanceof Error ? loadError.message : "团队消息回放失败。");
+    }
+  }, [id]);
+
   // Initial load
-  useEffect(() => { void loadContainer(); }, [loadContainer]);
+  useEffect(() => {
+    void Promise.all([loadContainer(), loadJudge(), loadMessages()]);
+  }, [loadContainer, loadJudge, loadMessages]);
+
+  useEffect(() => {
+    if (judgeRefreshTick > 0) void Promise.all([loadJudge(), loadMessages()]);
+  }, [judgeRefreshTick, loadJudge, loadMessages]);
 
   // Poll for observatory data + container refresh
   useEffect(() => {
     void loadObservatory();
     const timer = window.setInterval(() => {
-      void Promise.all([loadObservatory(), loadContainer(true)]);
+      void Promise.all([loadObservatory(), loadContainer(true), loadJudge(), loadMessages()]);
     }, 5_000);
     return () => window.clearInterval(timer);
-  }, [loadContainer, loadObservatory]);
+  }, [loadContainer, loadJudge, loadMessages, loadObservatory]);
 
   // Open dialog via custom event
   useEffect(() => {
@@ -524,6 +505,23 @@ export default function TeamObservatoryDashboard() {
       await Promise.all([loadContainer(true), loadObservatory()]);
     } catch (stopError) {
       setActionError(stopError instanceof Error ? stopError.message : "停止失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResumeJudge() {
+    setBusy(true);
+    setActionError(null);
+    try {
+      setJudge(await apiFetch<JudgeState>(`/api/work-containers/${id}/judge/resume`, {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey() },
+        body: JSON.stringify({ evidence: {} }),
+      }));
+      await Promise.all([loadContainer(true), loadMessages()]);
+    } catch (resumeError) {
+      setActionError(resumeError instanceof Error ? resumeError.message : "裁判恢复失败。");
     } finally {
       setBusy(false);
     }
@@ -671,7 +669,7 @@ export default function TeamObservatoryDashboard() {
             key={tab.key}
             id={`obs-tab-${tab.key}`}
             role="tab"
-            aria-controls={`obs-panel-${tab.key}`}
+            aria-controls={`obs-mobile-panel-${tab.key}`}
             aria-selected={mobileTab === tab.key}
             onClick={() => setMobileTab(tab.key)}
             className={`min-h-9 flex-1 rounded-md text-sm font-semibold ${
@@ -689,7 +687,7 @@ export default function TeamObservatoryDashboard() {
         aria-label="团队观测台三栏布局"
       >
         {/* Left: SessionRail */}
-        <div id="obs-panel-sessions" role="tabpanel" aria-labelledby="obs-tab-sessions" className="hidden xl:flex xl:min-h-0">
+        <div aria-label="团队成员" className="hidden xl:flex xl:min-h-0">
           <SessionRail
             sessions={container.sessions}
             selectedId={selectedId}
@@ -699,19 +697,22 @@ export default function TeamObservatoryDashboard() {
         </div>
 
         {/* Center: TeamChannel */}
-        <div id="obs-panel-conversation" role="tabpanel" aria-labelledby="obs-tab-conversation" className="hidden xl:flex xl:min-h-0 xl:min-w-0 xl:overflow-hidden">
-          <TeamChannel
-            messages={channelMessages}
-            sessions={container.sessions}
-            containerLifecycle={container.lifecycle_state}
-            selectedSessionId={selectedId}
-            onSelectSession={(sessionId) => setSelectedId(sessionId)}
-            onSendMessage={sendMessage}
-          />
+        <div aria-label="团队对话" className="hidden xl:flex xl:min-h-0 xl:min-w-0 xl:overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <JudgeRounds judge={judge} messages={channelMessages} sessions={container.sessions} loading={judgeLoading} busy={busy} onResume={handleResumeJudge} />
+            <TeamChannel
+              messages={channelMessages}
+              sessions={container.sessions}
+              containerLifecycle={container.lifecycle_state}
+              selectedSessionId={selectedId}
+              onSelectSession={(sessionId) => setSelectedId(sessionId)}
+              onSendMessage={sendMessage}
+            />
+          </div>
         </div>
 
         {/* Right: TeamInspector */}
-        <div id="obs-panel-control" role="tabpanel" aria-labelledby="obs-tab-control" className="hidden xl:block xl:min-h-0">
+        <div aria-label="团队控制" className="hidden xl:block xl:min-h-0">
           <TeamInspector
             containerId={id}
             container={container}
@@ -727,7 +728,7 @@ export default function TeamObservatoryDashboard() {
       <section className="xl:hidden mx-0 mt-4 min-h-[620px] overflow-hidden border-y border-border bg-white/85 shadow-surface sm:mx-0 sm:mt-6 sm:rounded-xl sm:border">
         {/* Sessions tab */}
         <div
-          id="obs-panel-sessions"
+          id="obs-mobile-panel-sessions"
           role="tabpanel"
           aria-labelledby="obs-tab-sessions"
           className={mobileTab === "sessions" ? "flex min-h-[620px]" : "hidden"}
@@ -742,11 +743,12 @@ export default function TeamObservatoryDashboard() {
 
         {/* Conversation tab */}
         <div
-          id="obs-panel-conversation"
+          id="obs-mobile-panel-conversation"
           role="tabpanel"
           aria-labelledby="obs-tab-conversation"
           className={mobileTab === "conversation" ? "flex min-h-[620px] min-w-0 flex-col" : "hidden"}
         >
+          <JudgeRounds judge={judge} messages={channelMessages} sessions={container.sessions} loading={judgeLoading} busy={busy} onResume={handleResumeJudge} />
           <TeamChannel
             messages={channelMessages}
             sessions={container.sessions}
@@ -759,7 +761,7 @@ export default function TeamObservatoryDashboard() {
 
         {/* Control tab */}
         <div
-          id="obs-panel-control"
+          id="obs-mobile-panel-control"
           role="tabpanel"
           aria-labelledby="obs-tab-control"
           className={mobileTab === "control" ? "block min-h-[620px]" : "hidden"}

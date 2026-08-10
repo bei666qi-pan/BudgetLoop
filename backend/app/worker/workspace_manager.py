@@ -218,7 +218,11 @@ class WorkspaceManager:
     def _wait_healthy(self, base_url: str, session_key: str) -> None:
         deadline = time.monotonic() + HEALTH_TIMEOUT_SECONDS
         last_diagnosis = "no response"
-        with httpx.Client(headers={"X-Session-API-Key": session_key}, timeout=5.0) as client:
+        with httpx.Client(
+            headers={"X-Session-API-Key": session_key},
+            timeout=5.0,
+            trust_env=False,
+        ) as client:
             while time.monotonic() < deadline:
                 try:
                     resp = client.get(f"{base_url}/health")
@@ -290,8 +294,21 @@ class WorkspaceManager:
         parent = f"{working_dir.rstrip('/')}/.budgetloop/worktrees"
         command = (
             f"mkdir -p {shlex.quote(parent)} && "
+            f"if test -d {shlex.quote(worktree_path)} && "
+            f"git -C {shlex.quote(worktree_path)} rev-parse --is-inside-work-tree "
+            ">/dev/null 2>&1; then true; "
+            f"elif git -C {shlex.quote(working_dir)} show-ref --verify --quiet "
+            f"refs/heads/{shlex.quote(branch)}; then "
+            # A Session may switch execution engines after a failed run.  Its
+            # branch can therefore already be checked out by the previous
+            # engine's external worktree.  Reuse the same branch explicitly;
+            # runs for one Session are serialized by the control plane.
+            f"git -C {shlex.quote(working_dir)} worktree add --force "
+            f"{shlex.quote(worktree_path)} {shlex.quote(branch)}; "
+            "else "
             f"git -C {shlex.quote(working_dir)} worktree add "
-            f"-b {shlex.quote(branch)} {shlex.quote(worktree_path)} HEAD"
+            f"-b {shlex.quote(branch)} {shlex.quote(worktree_path)} HEAD; "
+            "fi"
         )
         result = container.exec_run(["/bin/sh", "-c", command])
         if result.exit_code != 0:

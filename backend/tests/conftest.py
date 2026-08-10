@@ -43,8 +43,13 @@ def pg_url() -> str:
 @pytest.fixture()
 def pg_engine(pg_url):
     engine = create_engine(_normalize(pg_url))
+    # The session-scoped Testcontainer is reused for speed.  Recreate the
+    # schema for every test so commits made through secondary connections do
+    # not leak records into later tests.
+    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     yield engine
+    Base.metadata.drop_all(engine)
     engine.dispose()
 
 
@@ -53,7 +58,14 @@ def pg_session(pg_engine) -> Session:
     """绑定到外层事务的 Session：测试结束整体回滚，不污染共享容器。"""
     connection = pg_engine.connect()
     transaction = connection.begin()
-    session = Session(bind=connection, expire_on_commit=False)
+    # API handlers call ``session.commit()``.  Keep those commits inside a
+    # SAVEPOINT so one test can never leak rows into the next test while the
+    # outer transaction remains the cleanup boundary.
+    session = Session(
+        bind=connection,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
     yield session
     session.close()
     transaction.rollback()

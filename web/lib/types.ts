@@ -300,6 +300,8 @@ export interface WorkSessionSummary {
   id: string;
   container_id: string;
   role: string;
+  session_kind: "agent" | "judge" | string;
+  system_managed: boolean;
   goal: string;
   status: RunStatus | string;
   task_id: string;
@@ -333,6 +335,7 @@ export interface WorkContainer {
   preset_snapshot?: TeamPresetSnapshot | null;
   counts: WorkContainerCounts;
   sessions: WorkSessionSummary[];
+  judge?: JudgeState;
   /** 团队观测台 enriched 字段 — GET /api/containers 返回 */
   team_status?: TeamStatus | null;
   alert_count?: number | null;
@@ -776,9 +779,78 @@ export interface TeamObservatoryResponse {
 
 export interface TeamStreamEvent {
   seq: number;
-  type: "session_message" | "session_progress" | "session_status_change" | "team_control_audit" | "budget_pressure_change";
+  type:
+    | "session_message"
+    | "session_progress"
+    | "session_status_change"
+    | "team_control_audit"
+    | "budget_pressure_change"
+    | "judge_state_changed"
+    | "judge_gate_completed"
+    | "judge_feedback_dispatched"
+    | "judge_verdict_recorded";
   payload: Record<string, unknown>;
   created_at: string;
+}
+
+export type JudgeVerdict = "approve" | "rework" | "blocked";
+
+export interface DeterministicGateResult {
+  id: string;
+  gate_name: string;
+  passed: boolean;
+  evidence: Record<string, unknown>;
+  failure_reason: string | null;
+}
+
+export interface JudgeFinding {
+  id: string;
+  responsible_session_id: string | null;
+  severity: string;
+  summary: string;
+  evidence_refs: unknown[];
+  feedback: string | null;
+}
+
+export interface JudgeRound {
+  id: string;
+  sequence: number;
+  status: string;
+  phase: string;
+  verdict: JudgeVerdict | null;
+  summary: string | null;
+  evidence_refs: unknown[];
+  model_verdict: Record<string, unknown> | null;
+  feedback_message_ids: string[];
+  pending_session_ids: string[];
+  gates: DeterministicGateResult[];
+  findings: JudgeFinding[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JudgePolicy {
+  id: string;
+  gates: Array<{ name: string; required: boolean }>;
+  model_config: Record<string, unknown>;
+  safety_limits: Record<string, unknown>;
+}
+
+export interface JudgeState {
+  enabled: boolean;
+  reason?: string | null;
+  session?: {
+    id: string;
+    role: string;
+    status: string;
+    system_managed: boolean;
+    budget: BudgetState;
+  } | null;
+  policy?: JudgePolicy | null;
+  state?: string | null;
+  current_round?: JudgeRound | null;
+  rounds: JudgeRound[];
+  pending_reply_session_ids: string[];
 }
 
 export const TEAM_STATUS_LABELS: Record<TeamStatus, string> = {

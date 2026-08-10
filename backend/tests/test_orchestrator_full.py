@@ -333,6 +333,11 @@ class TestTestsRequired:
         task = _make_task(acceptance_criteria=None)
         assert orch._tests_required(task) is False
 
+    def test_explicit_model_config_can_disable_team_level_keyword(self):
+        orch = _make_orch()
+        task = _make_task(acceptance_criteria="最终必须通过真实测试")
+        assert orch._tests_required(task, {"tests_required": False}) is False
+
 
 # ---------------------------------------------------------------------------
 # 8. _advance_phase
@@ -403,6 +408,50 @@ class TestAcceptanceMet:
         orch = _make_orch()
         task = _make_task(acceptance_criteria="just do it")
         assert orch._acceptance_met(task, "idle", None) is False
+
+    def test_idle_after_real_agent_output_is_normalized_completion(self):
+        orch = _make_orch()
+        task = _make_task(acceptance_criteria="just do it")
+        assert orch._acceptance_met(
+            task, "idle", None, has_agent_output=True
+        ) is True
+
+    def test_explicit_no_tests_accepts_finished_role_evidence(self):
+        orch = _make_orch()
+        task = _make_task(acceptance_criteria="团队最终必须通过真实测试")
+        assert orch._acceptance_met(
+            task, "finished", None, {"tests_required": False}
+        ) is True
+
+    def test_required_artifacts_keep_finished_agent_in_rework(self, tmp_path):
+        orch = _make_orch()
+        task = _make_task(acceptance_criteria="create frontend artifacts")
+        config = {"tests_required": False, "required_artifacts": ["index.html", "style.css"]}
+
+        (tmp_path / "index.html").write_text("<!doctype html>", encoding="utf-8")
+        assert orch._acceptance_met(
+            task, "finished", None, config, working_dir=str(tmp_path)
+        ) is False
+
+        (tmp_path / "style.css").write_text("body {}", encoding="utf-8")
+        assert orch._acceptance_met(
+            task, "finished", None, config, working_dir=str(tmp_path)
+        ) is True
+
+    def test_forbidden_artifacts_prevent_false_completion(self, tmp_path):
+        orch = _make_orch()
+        task = _make_task(acceptance_criteria="only app.js may be delivered")
+        (tmp_path / "app.js").write_text("", encoding="utf-8")
+        (tmp_path / "test.html").write_text("", encoding="utf-8")
+        config = {
+            "tests_required": False,
+            "required_artifacts": ["app.js"],
+            "forbidden_artifacts": ["test.html"],
+        }
+
+        assert orch._acceptance_met(
+            task, "finished", None, config, working_dir=str(tmp_path)
+        ) is False
 
 
 # ---------------------------------------------------------------------------

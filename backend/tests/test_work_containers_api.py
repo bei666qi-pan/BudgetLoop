@@ -91,7 +91,8 @@ def test_container_validation_lifecycle_and_listing(client):
     assert invalid.status_code == 422
 
     container = _container(c)
-    assert container["counts"] == {"sessions": 0, "running": 0, "waiting": 0, "attention": 0}
+    assert container["counts"] == {"sessions": 1, "running": 0, "waiting": 1, "attention": 0}
+    assert container["sessions"][0]["session_kind"] == "judge"
     updated = c.patch(
         f"/api/work-containers/{container['id']}",
         headers=AUTH,
@@ -211,8 +212,11 @@ def test_preset_catalog_and_local_langgraph_recommendation(client, monkeypatch):
     local_only = resolve_gateway_config(
         Settings(
             _env_file=None,
+            ai_gateway_type="",
             ai_gateway_api_key="",
             ai_gateway_base_url="",
+            ai_gateway_recommendation_model="",
+            ai_gateway_default_model="",
             litellm_master_key="",
         )
     )
@@ -267,7 +271,8 @@ def test_create_team_later_is_atomic_idempotent_and_retry_safe(client, pg_sessio
     container = result["container"]
     assert container["preset_id"] == "game-development"
     assert container["preset_version"] == 1
-    assert len(container["sessions"]) == 5
+    assert len(container["sessions"]) == 6
+    assert len([item for item in container["sessions"] if item["session_kind"] == "judge"]) == 1
     assert {item["status"] for item in container["sessions"]} == {"PENDING"}
     assert enqueued == []
     snapshot = container["preset_snapshot"]
@@ -389,8 +394,12 @@ def test_full_access_team_persists_acknowledged_path_and_worktrees(client, pg_se
         "worktree_required": True,
     }
     assert payload["container"]["preset_snapshot"]["recommendation_source"] == "ai"
-    assert all(item["worktree_enabled"] for item in payload["container"]["sessions"])
-    run_ids = [uuid.UUID(item["current_run_id"]) for item in payload["container"]["sessions"]]
+    agent_sessions = [
+        item for item in payload["container"]["sessions"] if item["session_kind"] == "agent"
+    ]
+    assert all(item["worktree_enabled"] for item in agent_sessions)
+    assert payload["judge"]["session"]["budget"]["max_total_tokens"] == 60_000
+    run_ids = [uuid.UUID(item["current_run_id"]) for item in agent_sessions]
     for run_id in run_ids:
         run = pg_session.get(TaskRun, run_id)
         assert run is not None
@@ -398,7 +407,7 @@ def test_full_access_team_persists_acknowledged_path_and_worktrees(client, pg_se
         assert run.model_config["project_dir"] == "/tmp/budgetloop-project"
 
 
-def test_full_access_team_rejects_cli_engine_before_creating_runs(client):
+def test_full_access_team_accepts_cli_engine_with_server_owned_worktrees(client):
     c, _ = client
     response = c.post(
         "/api/work-containers/from-preset",
@@ -407,7 +416,7 @@ def test_full_access_team_rejects_cli_engine_before_creating_runs(client):
             "preset_id": "software-delivery",
             "preset_version": 1,
             "name": "CLI 全访问团队",
-            "project_goal": "确保完整访问不会被不可挂载的 CLI 引擎接受",
+            "project_goal": "确保 CLI 引擎使用服务器生成的隔离 worktree",
             "base_workdir": "/workspace/project",
             "default_workspace_policy": "worktree",
             "default_execution_engine": "codex",
@@ -417,8 +426,13 @@ def test_full_access_team_rejects_cli_engine_before_creating_runs(client):
             "start_immediately": False,
         },
     )
-    assert response.status_code == 422
-    assert "OpenHands" in response.json()["detail"]
+    assert response.status_code == 201, response.text
+    agent_sessions = [
+        item for item in response.json()["container"]["sessions"]
+        if item["session_kind"] == "agent"
+    ]
+    assert agent_sessions
+    assert all(item["worktree_enabled"] for item in agent_sessions)
 
 
 @pytest.mark.parametrize(
@@ -880,5 +894,5 @@ def test_progress_endpoint_excludes_private_context(client, pg_session):
         )
 
     # Verify benign data is present
-    assert body["team_summary"]["total"] == 2
+    assert body["team_summary"]["total"] == 3
     assert len(body["recent_milestones"]) == 2

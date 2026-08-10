@@ -46,6 +46,10 @@ class TestAssessAction:
         hits = assess_action("execute_bash", {"command": "ls"})
         assert len(hits) == 0
 
+    def test_dev_null_redirect_is_not_a_workspace_write(self):
+        hits = assess_action("execute_bash", {"command": "git status >/dev/null"})
+        assert not any("outside workdir" in hit.description for hit in hits)
+
     def test_safe_file_write_in_workspace(self):
         hits = assess_action("write_file", {"path": "/workspace/src/test.py", "content": "x"})
         assert len(hits) == 0

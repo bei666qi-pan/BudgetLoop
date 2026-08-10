@@ -69,7 +69,7 @@ def test_failed_server_run_leaves_inbox_queued():
     session.commit.assert_not_called()
 
 
-def test_successful_server_send_and_run_marks_delivered():
+def test_successful_server_send_and_run_marks_injected_until_agent_reply():
     session = MagicMock()
     client = MagicMock()
     client.transport = "server"
@@ -80,7 +80,8 @@ def test_successful_server_send_and_run_marks_delivered():
 
     orchestrator._send_iteration_message(SimpleNamespace(), "instruction", [message])
 
-    assert message.delivery_state == "delivered"
+    assert message.delivery_state == "injected"
+    assert message.injection_count == 1
     client.send_message.assert_called_once_with("instruction", run=False)
     client.run_conversation.assert_called_once_with()
     session.commit.assert_called_once()

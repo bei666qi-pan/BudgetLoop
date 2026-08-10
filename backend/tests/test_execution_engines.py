@@ -146,6 +146,15 @@ def test_cli_adapters_build_auditable_noninteractive_commands(engine_id: str, ex
     assert "ship it" in command
 
 
+def test_codex_adapter_accepts_server_selected_publish_sandbox() -> None:
+    command = adapter_for("codex").build_command(
+        prompt="publish",
+        workdir="/workspace",
+        sandbox_mode="danger-full-access",
+    )
+    assert command[:5] == ["codex", "exec", "--json", "--sandbox", "danger-full-access"]
+
+
 def test_event_normalization_drops_hidden_reasoning_but_keeps_public_output() -> None:
     adapter = adapter_for("codex")
     assert (

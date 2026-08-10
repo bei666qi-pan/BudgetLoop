@@ -19,6 +19,7 @@ import uuid
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from app.budget.manager import BudgetRejected, BudgetSnapshot, TaskBudgetManager
@@ -28,7 +29,6 @@ from app.collaboration.service import (
     delivery_event_payload,
     format_agent_inbox,
     mark_messages_acknowledged,
-    mark_messages_delivered,
     mark_messages_injected,
     queued_messages_for_run,
 )
@@ -37,6 +37,7 @@ from app.core.enums import (
     ALLOWED_TRANSITIONS,
     CallKind,
     EventType,
+    MessageDeliveryState,
     Phase,
     PressureMode,
     RunStatus,
@@ -329,6 +330,7 @@ class Orchestrator:
         self._strategy_switches: list[dict] = []
         self._feedback: str | None = None
         self._workspace_handle = None
+        self._artifact_working_dir: str | None = None
         self._managed_runtime_accounting = False
         self.engine_adapter: ExecutionEngineAdapter | None = None
 
@@ -356,6 +358,9 @@ class Orchestrator:
         task = getattr(run, "task", None) or self.session.get(Task, run.task_id)
         strategy = Strategy(run.strategy)
         model_config = dict(run.model_config or {})
+        self.step_timeout_seconds = float(
+            model_config.get("agent_step_timeout", self.step_timeout_seconds)
+        )
         execution_engine = selected_execution_engine(model_config)
         engine_adapter = adapter_for(execution_engine)
         self.engine_adapter = engine_adapter
@@ -379,7 +384,38 @@ class Orchestrator:
         # workspace：崩溃恢复（已有 container）则 attach，否则 provision
         handle = self._ensure_workspace(run, task, model_config)
         self._workspace_handle = handle
+        project_dir = str(model_config.get("project_dir") or "").strip()
+        if model_config.get("folder_access") == "full_access" and project_dir:
+            artifact_dir = Path(project_dir)
+            try:
+                relative_worktree = Path(handle.working_dir).relative_to(CONTAINER_WORKDIR)
+            except ValueError:
+                pass
+            else:
+                artifact_dir /= relative_worktree
+            self._artifact_working_dir = str(artifact_dir)
         if self.client is None:
+            owner = self._work_session(run)
+            if execution_engine == "codex" and owner is not None and project_dir:
+                writable_dirs: list[str] = []
+                if model_config.get("folder_access") == "full_access":
+                    # A local Git worktree stores its index, objects and branch ref
+                    # under the primary repository's .git directory, outside the
+                    # CLI worktree root.  Grant that metadata directory explicitly
+                    # so contributors can commit without granting access to the
+                    # primary product working tree.
+                    writable_dirs.append(str(Path(project_dir) / ".git"))
+                if (
+                    owner.role == "整合发布"
+                    and model_config.get("folder_access") == "full_access"
+                ):
+                    writable_dirs.append(project_dir)
+                    # Publishing must update the primary repository's Git metadata
+                    # and working tree. Only this system-owned integration role
+                    # receives the broader sandbox.
+                    model_config["_server_codex_sandbox"] = "danger-full-access"
+                if writable_dirs:
+                    model_config["_server_writable_dirs"] = writable_dirs
             self.client = engine_adapter.create_client(handle, model_config)
 
         # conversation：conversation_id = uuid5(NAMESPACE_URL, run_id)，幂等
@@ -483,15 +519,37 @@ class Orchestrator:
             return
         snapshot = self._snapshot_or_none(run, strategy)
         phase = run.current_phase or Phase.SCAN.value
-        initial_message = build_initial_message(
-            task_description=task.description,
-            acceptance_criteria=task.acceptance_criteria,
-            phase=phase,
-            snapshot=snapshot,
-            pressure_mode=PressureMode(run.pressure_mode or PressureMode.NORMAL.value),
-        )
-        if model_config.get("team_mode") == "autonomous":
+        run_instruction = str(model_config.get("run_instruction") or "").strip()
+        focused_rework = bool(model_config.get("focused_rework") and run_instruction)
+        if focused_rework:
+            initial_message = (
+                "# Judge 定向返工\n"
+                "这是原 Session、原分支和累计预算下的聚焦恢复运行。"
+                "只执行裁判指定事项，遵守当前 workspace 和角色写入边界，"
+                "完成验证后公开回复裁判。\n\n"
+                f"{run_instruction}"
+            )
+        else:
+            initial_message = build_initial_message(
+                task_description=task.description,
+                acceptance_criteria=task.acceptance_criteria,
+                phase=phase,
+                snapshot=snapshot,
+                pressure_mode=PressureMode(run.pressure_mode or PressureMode.NORMAL.value),
+            )
+        if model_config.get("team_mode") == "autonomous" and not focused_rework:
             initial_message = f"{initial_message}\n{build_autonomous_team_guidance()}\n"
+        required_artifacts = [str(item) for item in model_config.get("required_artifacts") or []]
+        forbidden_artifacts = [str(item) for item in model_config.get("forbidden_artifacts") or []]
+        if required_artifacts or forbidden_artifacts:
+            gate_lines = ["服务端工件门禁（必须在公开最终答复前实际满足）："]
+            if required_artifacts:
+                gate_lines.append(f"- 必须存在：{', '.join(required_artifacts)}")
+            if forbidden_artifacts:
+                gate_lines.append(f"- 必须不存在：{', '.join(forbidden_artifacts)}")
+            initial_message = f"{initial_message}\n\n" + "\n".join(gate_lines)
+        if run_instruction and not focused_rework:
+            initial_message = f"{initial_message}\n\n本次运行指令：\n{run_instruction}"
         conversation_model = model_config.get("model")
         llm_base_url = ""
         llm_api_key = ""
@@ -572,11 +630,19 @@ class Orchestrator:
                     last_score=self._scores[-1] if self._scores else None,
                     feedback=self._feedback,
                 )
-            if self._work_session(run) is not None:
+            run_instruction = str(model_config.get("run_instruction") or "").strip()
+            focused_rework = bool(model_config.get("focused_rework") and run_instruction)
+            if self._work_session(run) is not None and not focused_rework:
                 instruction = f"{instruction}\n\n{inject_coordination_protocol()}"
             inbox = queued_messages_for_run(self.session, self.run_uuid)
             if inbox:
                 instruction = f"{instruction}\n\n{format_agent_inbox(inbox)}"
+            if run_instruction:
+                instruction = (
+                    f"{instruction}\n\n"
+                    "本次运行的最高优先级恢复指令（不得被阶段模板覆盖）：\n"
+                    f"{run_instruction}"
+                )
             self._feedback = None
             try:
                 self._send_iteration_message(run, instruction, inbox)
@@ -617,8 +683,20 @@ class Orchestrator:
                     self._commit()
                 raise
 
-            # d2. CLI safety-checkpoint: extract progress signal and detect
-            # message acknowledgements from agent output
+            # d2. Every engine can satisfy a required collaboration request
+            # with its real public Agent output.  CLI engines additionally
+            # expose explicit acknowledgement markers and progress signals.
+            public_output = "\n\n".join(
+                text
+                for event in events
+                if str(event.get("kind") or event.get("type") or "") == "MessageEvent"
+                and event.get("source") == "agent"
+                if (text := self._message_text(event))
+            )
+            if public_output.strip():
+                self._store_required_message_responses(
+                    run, iteration, public_output.strip()
+                )
             if getattr(self.client, "transport", "server") == "cli":
                 self._handle_cli_progress_and_acks(run, iteration, events)
 
@@ -635,7 +713,14 @@ class Orchestrator:
             self._record_score(run, iteration, signals, score, llm_calls)
 
             # g1. 验收判定
-            if self._acceptance_met(task, conv_status, cur_test):
+            if self._acceptance_met(
+                task,
+                conv_status,
+                cur_test,
+                model_config,
+                working_dir=self._artifact_working_dir or working_dir,
+                has_agent_output=bool(public_output.strip()),
+            ):
                 run.iteration = iteration
                 return self.transition(run, RunStatus.COMPLETED)
 
@@ -694,8 +779,7 @@ class Orchestrator:
         budget.settle(est_tokens, est_cost, actual_tokens, actual_cost)
 
     def _send_iteration_message(self, run: TaskRun, instruction: str, inbox: list) -> None:
-        """Submit and schedule execution. CLI engines inject → acknowledged;
-        server engines mark as delivered immediately."""
+        """Submit and schedule execution, then await a real acknowledgement."""
         if getattr(self.client, "transport", "server") == "cli":
             # CLI safety-checkpoint injection: messages transition queued → injected,
             # and only → acknowledged when the agent confirms via send_message.
@@ -712,7 +796,7 @@ class Orchestrator:
             self.client.send_message(instruction, run=False)
             self.client.run_conversation()
             if inbox:
-                mark_messages_delivered(inbox)
+                mark_messages_injected(inbox)
                 self.emit_event(
                     run,
                     EventType.COLLABORATION_DELIVERED,
@@ -740,6 +824,9 @@ class Orchestrator:
                 all_text.append(text[:4000])
 
         combined = "\n".join(all_text)
+
+        if combined.strip():
+            self._store_required_message_responses(run, iteration, combined.strip())
 
         # Extract progress signal
         signal = self.engine_adapter.extract_progress_signal(combined)
@@ -802,6 +889,62 @@ class Orchestrator:
                             },
                         )
                         self._commit()
+
+    def _store_required_message_responses(
+        self,
+        run: TaskRun,
+        iteration: int,
+        public_output: str,
+    ) -> None:
+        """Persist a real Agent reply when its output follows a required request.
+
+        The reply body is the Agent's observed public output, never synthesized
+        by the control plane. Creating the reply also proves receipt, so the
+        originating injected message is acknowledged atomically.
+        """
+        owner = self._work_session(run)
+        if owner is None:
+            return
+        requests = list(
+            self.session.query(SessionMessage)
+            .filter(
+                SessionMessage.recipient_session_id == owner.id,
+                SessionMessage.delivery_state == MessageDeliveryState.INJECTED.value,
+            )
+            .all()
+        )
+        for request in requests:
+            metadata = request.message_metadata or {}
+            if request.sender_session_id is None or metadata.get("required_response") is not True:
+                continue
+            key = f"agent-reply:{request.id}:{iteration}"
+            exists = self.session.query(SessionMessage.id).filter(
+                SessionMessage.container_id == owner.container_id,
+                SessionMessage.idempotency_key == key,
+            ).scalar()
+            if exists is None:
+                self.session.add(
+                    SessionMessage(
+                        container_id=owner.container_id,
+                        sender_session_id=owner.id,
+                        recipient_session_id=request.sender_session_id,
+                        author_type="session",
+                        kind="handoff",
+                        message_type="handoff",
+                        content=public_output[:8_000],
+                        delivery_state=MessageDeliveryState.QUEUED.value,
+                        idempotency_key=key,
+                        message_metadata={
+                            "response_to_message_id": str(request.id),
+                            "judge_round_id": metadata.get("judge_round_id"),
+                            "source_run_id": str(run.id),
+                            "iteration": iteration,
+                        },
+                    )
+                )
+            request.delivery_state = MessageDeliveryState.ACKNOWLEDGED.value
+            request.acknowledged_at = utcnow()
+        self._commit()
 
     def _store_session_progress(
         self, run: TaskRun, iteration: int, signal
@@ -1046,7 +1189,9 @@ class Orchestrator:
     # ------------------------------------------------------------------
     # e. 测试
     # ------------------------------------------------------------------
-    def _tests_required(self, task: Task) -> bool:
+    def _tests_required(self, task: Task, model_config: dict | None = None) -> bool:
+        if model_config is not None and "tests_required" in model_config:
+            return bool(model_config["tests_required"])
         acceptance = (getattr(task, "acceptance_criteria", None) or "").lower()
         return any(k in acceptance for k in ("test", "测试", "unittest", "pytest"))
 
@@ -1054,7 +1199,10 @@ class Orchestrator:
         self, run: TaskRun, task: Task, iteration: int, working_dir: str, model_config: dict
     ) -> tuple[int, int] | None:
         phase = run.current_phase
-        if not (self._tests_required(task) or phase in (Phase.VERIFY.value, Phase.REPAIR.value)):
+        if not (
+            self._tests_required(task, model_config)
+            or phase in (Phase.VERIFY.value, Phase.REPAIR.value)
+        ):
             return self._prev_test
         command = model_config.get("test_command", DEFAULT_TEST_COMMAND)
         out = self.client.execute_bash(
@@ -1189,10 +1337,46 @@ class Orchestrator:
     # ------------------------------------------------------------------
     # g. 验收 / 审批 / 策略 / 压力 / 阶段预算
     # ------------------------------------------------------------------
-    def _acceptance_met(self, task: Task, conv_status: str, cur_test: tuple[int, int] | None) -> bool:
-        if conv_status != "finished":
+    def _acceptance_met(
+        self,
+        task: Task,
+        conv_status: str,
+        cur_test: tuple[int, int] | None,
+        model_config: dict | None = None,
+        *,
+        working_dir: str | None = None,
+        has_agent_output: bool = False,
+    ) -> bool:
+        # Agent Server normalizes a completed execution from ``finished`` back
+        # to ``idle`` shortly after persisting the final MessageEvent.  The
+        # worker waits for that terminal normalization, so require a real
+        # public Agent output before accepting normalized idle as completion.
+        if conv_status != "finished" and not (conv_status == "idle" and has_agent_output):
             return False
-        if self._tests_required(task):
+        config = model_config or {}
+        required_artifacts = config.get("required_artifacts") or []
+        forbidden_artifacts = config.get("forbidden_artifacts") or []
+        if required_artifacts or forbidden_artifacts:
+            if not working_dir:
+                return False
+            workspace = Path(working_dir).resolve()
+
+            def artifact_exists(value: object) -> bool:
+                relative = Path(str(value))
+                if relative.is_absolute() or ".." in relative.parts:
+                    return False
+                candidate = (workspace / relative).resolve()
+                try:
+                    candidate.relative_to(workspace)
+                except ValueError:
+                    return False
+                return candidate.is_file()
+
+            if any(not artifact_exists(item) for item in required_artifacts):
+                return False
+            if any(artifact_exists(item) for item in forbidden_artifacts):
+                return False
+        if self._tests_required(task, model_config):
             return cur_test is not None and cur_test[1] == 0 and cur_test[0] > 0
         return True
 
@@ -1545,6 +1729,11 @@ class Orchestrator:
         frm = RunStatus(str(run.status))
         assert_transition(frm, to)
         run.status = to.value
+        owner = self._work_session(run)
+        if owner is not None:
+            owner.current_run_id = run.id
+            owner.status = to.value
+            owner.updated_at = utcnow()
         self.emit_event(run, EventType.STATE_CHANGED, {"from": frm.value, "to": to.value})
         return to
 

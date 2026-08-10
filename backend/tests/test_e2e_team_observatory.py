@@ -120,7 +120,7 @@ def test_get_enriched_container_with_observatory_data(client):
     # team_status
     ts = data["team_status"]
     assert ts["phase"] in ("running", "idle")
-    assert ts["total_sessions"] == 2
+    assert ts["total_sessions"] == 3
     assert ts["lifecycle_state"] == "active"
 
     # usage_summary
@@ -132,7 +132,7 @@ def test_get_enriched_container_with_observatory_data(client):
     # progress_summary — list of per-session progress entries
     ps = data["progress_summary"]
     assert isinstance(ps, list)
-    assert len(ps) == 2
+    assert len(ps) == 3
 
 
 def test_enriched_container_includes_sessions(client):
@@ -149,11 +149,12 @@ def test_enriched_container_includes_sessions(client):
     data = resp.json()
 
     assert "sessions" in data
-    assert len(data["sessions"]) == 2
+    assert len(data["sessions"]) == 3
 
     roles = [s["role"] for s in data["sessions"]]
     assert "后端" in roles
     assert "前端" in roles
+    assert "汇总裁判" in roles
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +423,7 @@ def test_team_progress_endpoint(client):
     data = resp.json()
 
     assert "team_summary" in data
-    assert data["team_summary"]["total"] == 2
+    assert data["team_summary"]["total"] == 3
     assert "sessions" in data
 
 
@@ -467,12 +468,12 @@ def test_multiple_sessions_reflected_in_counts(client):
     assert resp.status_code == 200
     data = resp.json()
 
-    assert len(data["sessions"]) == 3
-    assert data["team_status"]["total_sessions"] == 3
+    assert len(data["sessions"]) == 4
+    assert data["team_status"]["total_sessions"] == 4
 
 
-def test_empty_container_without_sessions(client):
-    """Container with no sessions shows empty observatory data."""
+def test_container_without_user_sessions_still_has_mandatory_judge(client):
+    """A new container exposes its mandatory system judge immediately."""
     c, _, _ = client
     container = _create_container(c)
     cid = container["id"]
@@ -481,8 +482,9 @@ def test_empty_container_without_sessions(client):
     assert resp.status_code == 200
     data = resp.json()
 
-    assert len(data["sessions"]) == 0
-    assert data["team_status"]["total_sessions"] == 0
+    assert len(data["sessions"]) == 1
+    assert data["sessions"][0]["session_kind"] == "judge"
+    assert data["team_status"]["total_sessions"] == 1
     # Empty container may show "idle" or "completed" depending on lifecycle state
     assert data["team_status"]["phase"] in ("idle", "completed")
 

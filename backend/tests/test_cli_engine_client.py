@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -134,6 +135,8 @@ def test_managed_gemini_environment_maps_only_native_runtime_values(
     assert environment["GOOGLE_GEMINI_BASE_URL"] == "http://control-plane/runtime"
     assert environment["GEMINI_API_KEY"] == "scoped-token"
     assert environment["GEMINI_MODEL"] == "deepseek-model"
+    assert "127.0.0.1" in environment["NO_PROXY"]
+    assert environment["no_proxy"] == environment["NO_PROXY"]
     assert "OPENAI_API_KEY" not in environment
     assert "UNSAFE" not in environment
 
@@ -181,6 +184,50 @@ def test_local_workspace_copies_source_and_creates_owned_worktree(tmp_path: Path
     assert handle.container_id == f"local:{uuid.UUID(run_id).hex}"
     assert handle.worktree_branch and handle.worktree_branch.startswith("bl/session-")
     assert Path(handle.working_dir, "README.md").read_text(encoding="utf-8") == "hello"
+    attached = manager.attach(
+        run_id,
+        handle.container_id,
+        working_dir=handle.working_dir,
+        worktree_branch=handle.worktree_branch,
+    )
+    assert attached.working_dir == handle.working_dir
+
+
+def test_local_full_access_uses_external_worktree_without_committing_root(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    subprocess.run(["git", "-C", str(project), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(project), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(project), "config", "user.name", "Test"], check=True)
+    (project / "tracked.txt").write_text("baseline", encoding="utf-8")
+    subprocess.run(["git", "-C", str(project), "add", "tracked.txt"], check=True)
+    subprocess.run(["git", "-C", str(project), "commit", "-q", "-m", "baseline"], check=True)
+    (project / "tracked.txt").write_text("operator change", encoding="utf-8")
+    (project / "untracked.txt").write_text("keep me", encoding="utf-8")
+    status_before = subprocess.run(
+        ["git", "-C", str(project), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    manager = LocalWorkspaceManager(tmp_path / "workspaces")
+    run_id = str(uuid.uuid4())
+    handle = manager.provision(
+        run_id,
+        folder_access="full_access",
+        project_dir=project,
+        worktree_session_id=str(uuid.uuid4()),
+    )
+
+    assert Path(handle.working_dir).is_dir()
+    assert project not in Path(handle.working_dir).parents
+    assert subprocess.run(
+        ["git", "-C", str(project), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == status_before
     attached = manager.attach(
         run_id,
         handle.container_id,

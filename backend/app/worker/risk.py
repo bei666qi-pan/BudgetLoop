@@ -84,6 +84,8 @@ _DELETE_TOOL_NAMES = frozenset({"delete_file", "remove_file"})
 
 
 def _is_out_of_workdir(path: str, workdir: str) -> bool:
+    if path == "/dev/null":
+        return False
     workdir = workdir.rstrip("/") or "/"
     return not (path == workdir or path.startswith(workdir + "/"))
 

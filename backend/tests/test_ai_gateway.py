@@ -27,6 +27,7 @@ def _settings(**overrides) -> Settings:
         "ai_gateway_api_key": "secret-gateway-token",
         "ai_gateway_console_url": "https://gateway.example/admin",
         "ai_gateway_recommendation_model": "budgetloop-recommendation",
+        "ai_gateway_default_model": "",
         "ai_recommendation_enabled": True,
         "ai_gateway_status_ttl_seconds": 0,
     }
@@ -196,6 +197,31 @@ def test_reasoning_recommendation_uses_longer_bounded_read_timeout(monkeypatch) 
     GatewayClient(config, transport=transport).recommend([])
     assert captured == [GatewayClient.REASONING_RECOMMENDATION_TIMEOUT_SECONDS]
     assert captured[0] <= 120
+
+
+def test_compatible_recommendation_uses_generation_timeout_without_explicit_reasoning(monkeypatch) -> None:
+    config = _config(
+        ai_gateway_type="compatible",
+        ai_gateway_read_timeout_seconds=8,
+        ai_gateway_reasoning_effort="",
+        ai_gateway_thinking_enabled=False,
+    )
+    captured: list[float | None] = []
+    original_client = GatewayClient._client
+
+    def observed_client(self, *, read_timeout_seconds=None):
+        captured.append(read_timeout_seconds)
+        return original_client(self, read_timeout_seconds=read_timeout_seconds)
+
+    monkeypatch.setattr(GatewayClient, "_client", observed_client)
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"verdict":"approve"}'}}]},
+        )
+    )
+    GatewayClient(config, transport=transport).recommend([])
+    assert captured == [GatewayClient.REASONING_RECOMMENDATION_TIMEOUT_SECONDS]
 
 
 def test_gateway_status_is_redacted_and_cacheable() -> None:

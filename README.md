@@ -1,185 +1,148 @@
-<br />
 <p align="center">
-  <picture>
-    <img src="./web/app/icon.svg" width="120" alt="BudgetLoop">
-  </picture>
+  <img src="./web/app/icon.svg" width="112" alt="BudgetLoop logo" />
 </p>
 
 <h1 align="center">BudgetLoop</h1>
-<p align="center"><strong>预算感知的 Coding Agent 控制面</strong><br />规划 · 执行 · 验证 · 恢复 — 在你的边界内完成</p>
 
 <p align="center">
-  <a href="https://github.com/bei666qi-pan/BudgetLoop/releases/latest"><img src="https://img.shields.io/github/v/release/bei666qi-pan/BudgetLoop?style=flat&label=latest" alt="Release"></a>
-  <a href="https://github.com/bei666qi-pan/BudgetLoop/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/bei666qi-pan/BudgetLoop/release.yml?style=flat&label=ci" alt="CI"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/bei666qi-pan/BudgetLoop?style=flat" alt="MIT"></a>
+  <strong>The controlled coordination layer for real Agent teams.</strong><br />
+  Route · collaborate · verify · govern · deliver
+</p>
+
+<p align="center">
+  <a href="https://github.com/bei666qi-pan/BudgetLoop/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/bei666qi-pan/BudgetLoop/release.yml?style=flat&label=CI" alt="CI" /></a>
+  <a href="https://github.com/bei666qi-pan/BudgetLoop/releases/latest"><img src="https://img.shields.io/github/v/release/bei666qi-pan/BudgetLoop?style=flat&label=release" alt="Release" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/bei666qi-pan/BudgetLoop?style=flat" alt="MIT license" /></a>
 </p>
 
 <p align="center"><strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a></p>
 
 ---
 
-## 一键启动
+## Why BudgetLoop?
 
-```bash
-git clone https://github.com/bei666qi-pan/BudgetLoop.git && cd BudgetLoop && cp .env.example .env && docker compose up -d --build
-```
+BudgetLoop does **not** rebuild an Agent framework. It sits on top of execution engines such as **OpenHands, Codex and Gemini CLI**, selects the right engine through policy and availability-aware routing, and turns isolated runs into a governed delivery team.
 
-打开 [http://localhost:3000](http://localhost:3000) · 编辑 `.env` 填入模型网关密钥后刷新：`docker compose up -d --build control-plane worker web`
-
----
-
-## 这是什么
-
-BudgetLoop 把自然语言需求转化为有预算、有证据、可审批的 Agent 执行闭环。它运行真实的 Agent 和工具，跟踪 Token/时间/调用/费用预算，在进展受阻时自我恢复，并在需要你决策时停下来等你。
+Sessions exchange durable messages, draw on specialized Skills, and work within explicit workspace permissions. Budgets, audit trails and human intervention keep the process controllable. A system judge and a supervisor-model evaluation loop then coordinate evidence, request focused rework and approve only verifiable delivery.
 
 > [!IMPORTANT]
-> BudgetLoop 是实验性自托管系统。请只使用你信任的仓库、凭据和 Docker 环境。
+> BudgetLoop runs real agents, commands and model calls. Use repositories, credentials and Docker environments you trust.
 
-## 能做什么
+## What you get
 
-| | |
+| Capability | What it means in practice |
 | --- | --- |
-| **可信预算** | 围绕真实模型调用的原子化预留与结算 |
-| **有证据，不表演** | 工具输出、测试结果、退出码、Diff、工件、时间线 |
-| **Agent Team** | 引导式协作、可并行阶段、显式 Handoff、人工审批 |
-| **安全隔离** | 每 Run 独立 Docker 工作区、服务端 Git Worktree、显式目录授权 |
-| **诚实反馈** | 启动阶段可见、有界重试、可操作错误信息 |
-| **自我恢复** | 按进展信号切换策略、回滚、最小修复或交付部分结果 |
+| **Smart engine routing** | Choose an available execution engine for the task while preserving its engine-specific sandbox model. |
+| **Real team collaboration** | Product, architecture, implementation, QA and integration Sessions communicate through durable, observable messages—not a fixed prompt chain. |
+| **Judge-led quality loop** | Deterministic gates run first; the judge model can approve, direct rework to selected Sessions, or block safely. |
+| **Budgets that do not lie** | Track token, cost, call and time envelopes across retries and rework. Re-running cannot reset the cumulative budget. |
+| **Evidence before approval** | Tests, artifacts, delivery acknowledgements, Git publication and model verdicts are persisted for inspection. |
+| **Human control at boundaries** | Pause, adjust a Session budget, inspect evidence or resume a saved loop when a safety boundary is reached. |
+| **Safe delivery roles** | Contributors work in isolated worktrees; the integration role is the only role allowed to publish the primary repository. |
 
-## 开始使用
+## Five-minute start
 
-**前置条件：** Docker + Docker Compose v2 + Git
+### 1. Start the control plane
 
-1. 在首页描述你想要的结果
-2. 检查推荐的 Agent 团队、验收条件和预算
-3. 点击**确认并启动**
-
-预算只在确认后才开始消耗；草稿生成不扣费、不创建任务。
-
-## 架构
-
-```
-Next.js Web UI  →  FastAPI 控制面  →  PostgreSQL + Valkey + Dramatiq
-                                          ↓
-        OpenHands / CLI 引擎  ←  每 Run Docker 工作区
-                ↓
-         New API / 兼容网关  →  LLM 服务商
+```bash
+git clone https://github.com/bei666qi-pan/BudgetLoop.git
+cd BudgetLoop
+cp .env.example .env
+docker compose up -d --build
 ```
 
-| 层 | 技术 |
-| --- | --- |
-| 界面 | Next.js 15 · React 19 · TypeScript · Tailwind CSS |
-| 控制面 | FastAPI · SQLAlchemy · PostgreSQL 16 |
-| 任务队列 | Dramatiq · Valkey |
-| Agent | OpenHands SDK · Codex · Gemini CLI |
-| 隔离 | 每 Run Docker 工作区 · Git Worktree |
-| 网关 | QuantumNous New API · 兼容 OpenAI/Anthropic |
+Open [http://localhost:3000](http://localhost:3000). The control-plane API is available on [http://localhost:8000](http://localhost:8000), and the optional New API console is available on [http://localhost:3001](http://localhost:3001).
 
-## 安全
+### 2. Connect an authorized model gateway
 
-- **默认隔离** — 每 Run 只写自己的 Docker 卷
-- **显式授权** — 直接读写本地文件夹需确认绝对路径
-- **失败关闭** — 挂载或启动失败直接终止，不静默降级
-- **凭据在服务端** — 前端永不接触网关或模型密钥
-- **可审批** — 高风险写入、命令、网络操作可要求人工确认
+Edit `.env` with the gateway and model alias you are authorized to use. The default deployment uses [New API](https://github.com/QuantumNous/new-api) as an OpenAI-compatible gateway; LiteLLM remains available through the `legacy-litellm` profile. Secrets remain server-side and are never bundled into the web app.
 
-## AI 操控（MCP Server）
+### 3. Create a team, then observe the loop
 
-BudgetLoop 内置 MCP Server，让 AI Coding Agent（Kimi Code、Claude Desktop、Cursor 等）可以直接操控 BudgetLoop 的任务、运行、审批、报告等。
+1. Describe the outcome you want on the home page.
+2. Review the generated acceptance criteria, Session roles and budget envelope.
+3. Confirm and start the team.
+4. Open **Agent Team** to inspect the three-column observatory: Sessions, round-grouped messages and controls.
+5. Follow the system judge as it collects evidence, runs gates, asks selected agents for clarification and records a verdict.
 
-### 方式一：Docker Compose（推荐）
+Budget is reserved only after you confirm execution. Drafting a task does not create a run or consume model budget.
 
-MCP Server 随 `docker compose up -d --build` 自动启动在 `localhost:3100`。
+## How a controlled team delivers
 
-在你的 AI Agent 配置中添加：
+```text
+Request + acceptance criteria
+            │
+            ▼
+Engine router ──► OpenHands / Codex / Gemini CLI
+            │
+            ▼
+Specialist Sessions ── durable messages + Skills ──► QA evidence
+            │                                                │
+            └────────────── integration publishes ───────────┘
+                                      │
+                                      ▼
+                       System judge: deterministic gates
+                                      │
+                 ┌────────────────────┼────────────────────┐
+                 ▼                    ▼                    ▼
+             approve          targeted rework          blocked / pause
+```
 
-**Kimi Code**（`.kimi/config.toml`）：
+The judge never invents a deterministic pass. Required roles, message acknowledgement, evidence, workspace compliance, publication, test/build success and deliverable presence must all pass before a real model evaluation can approve. Model timeout or invalid output becomes a visible blocked state, ready for operator recovery.
+
+## Local development
+
+Prerequisites: Docker + Docker Compose v2 + Git. For source development, use Python 3.12+ and Node.js 20+.
+
+```bash
+# backend
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
+
+# web (new terminal)
+cd web
+npm ci
+npm test
+npm run build
+```
+
+Useful checks:
+
+```bash
+cd backend && pytest -q
+cd web && npm test && npm run build
+openspec validate --all
+```
+
+## MCP control interface
+
+BudgetLoop exposes an MCP server so capable coding tools can create tasks, inspect runs, handle approvals and read team state through the control plane.
+
 ```toml
+# Kimi Code: .kimi/config.toml
 [mcp_servers.budgetloop]
 transport = "sse"
 url = "http://localhost:3100/sse"
 ```
 
-**Claude Desktop**（`claude_desktop_config.json`）：
-```json
-{
-  "mcpServers": {
-    "budgetloop": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "--network", "host", "-e", "BUDGETLOOP_API_URL=http://localhost:8000", "-e", "BUDGETLOOP_API_TOKEN=budgetloop-dev-token", "budgetloop-mcp"]
-    }
-  }
-}
+For other clients and standalone setup, see [`mcp/`](./mcp) and the static [OpenAPI specification](./docs/openapi.json).
+
+## Repository map
+
+```text
+backend/    FastAPI control plane, orchestration, budgets, judge and workers
+web/        Next.js observatory and operator experience
+mcp/        MCP server for external coding tools
+openspec/   Versioned product specifications and change history
+docs/       OpenAPI and release documentation
+vendor/     Reviewed execution-engine and gateway sources
 ```
 
-**通用 stdio 模式**（任何支持 MCP 的工具）：
-```json
-{
-  "mcpServers": {
-    "budgetloop": {
-      "command": "python3",
-      "args": ["-m", "mcp.server"],
-      "cwd": "/path/to/BudgetLoop/mcp",
-      "env": {
-        "BUDGETLOOP_API_URL": "http://localhost:8000",
-        "BUDGETLOOP_API_TOKEN": "budgetloop-dev-token"
-      }
-    }
-  }
-}
-```
+## Contributing
 
-### 方式二：独立运行
+Issues and pull requests are welcome. Please keep behavior changes covered by tests and record meaningful product changes in OpenSpec. Do not commit credentials, local engine state, generated worktrees or provider tokens.
 
-```bash
-cd mcp && pip install . && budgetloop-mcp --transport sse --port 3100
-```
-
-### 可用工具一览
-
-| 工具 | 说明 |
-|---|---|
-| `create_task` | 创建编码任务（含预算） |
-| `list_tasks` | 列出所有任务 |
-| `get_run` | 获取运行详情 |
-| `pause_run` / `cancel_run` | 控制运行生命周期 |
-| `get_run_events` | 轮询执行事件 |
-| `get_run_report` | 获取最终报告 |
-| `get_budget` | 查看预算消耗 |
-| `decide_approval` | 审批 Agent 高风险操作 |
-| `list_work_containers` | 列出 Agent Team |
-| `get_work_container` | 查看 Team 详情 |
-| `get_ai_gateway_status` | 检查 AI 网关 |
-| `list_execution_engines` | 列出可用引擎 |
-| `health_check` | 健康检查 |
-
-## OpenAPI Spec
-
-静态 OpenAPI 3.1 规范文件位于 [`docs/openapi.json`](./docs/openapi.json)，可供 Cursor、Continue、Copilot 等工具直接消费。
-
-## 开发
-
-```bash
-# 后端
-cd backend && python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]" && pytest
-
-# Web
-cd web && npm ci && npm test && npm run build
-
-# 版本一致性检查
-python3 scripts/check_release_version.py
-```
-
-```
-backend/   API · 编排 · 预算 · 策略 · Worker
-web/       浏览器操作界面
-mcp/       MCP Server（AI Agent 操控接口）
-openspec/  版本化产品需求与变更
-docs/      发布文档与 OpenAPI 规范
-```
-
-## 贡献与许可
-
-欢迎 Issue 和 PR。行为变更请附带测试，重要变更请同步 OpenSpec 规范。
-
-MIT License · 第三方组件保留各自许可 · [NOTICE](./NOTICE)
+MIT License · third-party components retain their own licenses · [NOTICE](./NOTICE)

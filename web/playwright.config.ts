@@ -6,7 +6,7 @@ export default defineConfig({
   expect: { timeout: 15000 },
   use: {
     baseURL: "http://localhost:3000",
-    headless: false,  // 真实浏览器可见
+    headless: true,
     viewport: { width: 1440, height: 900 },
     screenshot: "on",
     video: "retain-on-failure",

@@ -1019,7 +1019,14 @@ def test_message_fails_after_three_injections_without_ack(client, pg_session):
     assert msg.delivery_state == MessageDeliveryState.INJECTED.value
     assert msg.injection_count == 2
 
-    # 4. Third injection — should transition to failed
+    # 4. Third injection is a real final delivery attempt.
+    mark_messages_injected([msg])
+    pg_session.commit()
+    pg_session.refresh(msg)
+    assert msg.delivery_state == MessageDeliveryState.INJECTED.value
+    assert msg.injection_count == 3
+
+    # 5. A subsequent scheduling attempt fails the unacknowledged message.
     mark_messages_injected([msg])
     pg_session.commit()
     pg_session.refresh(msg)
@@ -1047,7 +1054,7 @@ def test_failed_message_cannot_transition_to_acknowledged(client, pg_session):
 
     # Inject 3 times → failed
     msg = pg_session.get(SessionMessage, uuid.UUID(msg_id))
-    for _ in range(3):
+    for _ in range(4):
         mark_messages_injected([msg])
         pg_session.commit()
     pg_session.refresh(msg)
@@ -1176,9 +1183,9 @@ def test_integration_inject_fail_emits_audit_event(client, pg_session):
     )
     msg_id = uuid.UUID(result["message"]["id"])
 
-    # Inject 3 times to trigger fail via mark_messages_injected
+    # Allow three real injections; the next scheduling attempt triggers fail.
     msg = pg_session.get(SessionMessage, msg_id)
-    for _ in range(3):
+    for _ in range(4):
         mark_messages_injected([msg])
         pg_session.commit()
     pg_session.refresh(msg)

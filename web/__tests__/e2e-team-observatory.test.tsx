@@ -539,7 +539,8 @@ describe("Team Observatory E2E", () => {
       let callCount = 0;
       mockApiFetch.mockImplementation(() => {
         callCount++;
-        if (callCount <= 2) {
+        // Initial render loads container, observatory, judge state and durable messages.
+        if (callCount <= 4) {
           return Promise.resolve(makeMergedData());
         }
         return Promise.resolve(

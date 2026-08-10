@@ -60,6 +60,10 @@ class AgentServerClient:
             base_url=self.base_url,
             headers={"X-Session-API-Key": session_key},
             timeout=timeout,
+            # Agent servers are always reached through Docker-published local
+            # ports.  Operator HTTP(S)_PROXY settings must never intercept
+            # that control-plane traffic.
+            trust_env=False,
         )
 
     def close(self) -> None:

@@ -24,6 +24,7 @@ from app.core.db import get_db
 from app.core.enums import RunStatus, Strategy, TaskTemplate, WorkspacePolicy
 from app.core.models import TaskRun, WorkContainer, WorkSession, utcnow
 from app.execution_engines import DEFAULT_ENGINE_ID, engine_preflight, get_engine
+from app.judge.service import ensure_judge_session, judge_state
 from app.policy.workspace_access import (
     FolderAccess,
     normalize_project_dir,
@@ -243,7 +244,7 @@ def _ordered_runs(container: WorkContainer) -> list[TaskRun]:
                 ordered.append(item.current_run)
                 seen.add(item.current_run.id)
     for item in container.sessions:
-        if item.current_run and item.current_run.id not in seen:
+        if not item.system_managed and item.current_run and item.current_run.id not in seen:
             ordered.append(item.current_run)
             seen.add(item.current_run.id)
     return ordered
@@ -300,8 +301,11 @@ def create_team_from_preset(
     ).scalar_one_or_none()
     if existing is not None:
         container = _container_or_404(session, existing.id)
+        ensure_judge_session(session, container)
+        session.commit()
         return {
             "container": _container_dict(container),
+            "judge": judge_state(session, container),
             "created": False,
             "dispatch": {"accepted": [], "skipped": [], "warnings": []},
         }
@@ -320,21 +324,6 @@ def create_team_from_preset(
     unknown_engines = sorted(engine_id for engine_id in requested_engines if get_engine(engine_id) is None)
     if unknown_engines:
         raise HTTPException(status_code=422, detail=f"unknown execution engines: {unknown_engines}")
-
-    if body.folder_access == "full_access":
-        unsupported_engines = sorted(
-            engine_id
-            for engine_id in requested_engines
-            if (engine := get_engine(engine_id)) is not None and engine.transport != "server"
-        )
-        if unsupported_engines:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "full_access Agent Teams require the OpenHands server engine; "
-                    f"CLI engines cannot access the selected host folder: {unsupported_engines}"
-                ),
-            )
 
     applied_roles = []
     for role in preset.roles:
@@ -436,6 +425,7 @@ def create_team_from_preset(
         },
         "dispatch": {"dispatched_run_ids": []},
     }
+    ensure_judge_session(session, container)
     container.updated_at = utcnow()
     session.commit()
 
@@ -447,7 +437,12 @@ def create_team_from_preset(
     else:
         container = _container_or_404(session, container.id)
 
-    return {"container": _container_dict(container), "created": True, "dispatch": dispatch}
+    return {
+        "container": _container_dict(container),
+        "judge": judge_state(session, container),
+        "created": True,
+        "dispatch": dispatch,
+    }
 
 
 @router.post("/work-containers/{container_id}/start")

@@ -101,6 +101,12 @@ class WorkContainer(Base):
     messages: Mapped[list["SessionMessage"]] = relationship(
         back_populates="container", cascade="all, delete-orphan"
     )
+    judge_policy: Mapped["JudgePolicy | None"] = relationship(
+        back_populates="container", cascade="all, delete-orphan", uselist=False
+    )
+    judge_rounds: Mapped[list["JudgeRound"]] = relationship(
+        back_populates="container", cascade="all, delete-orphan", order_by="JudgeRound.sequence"
+    )
 
 
 class WorkSession(Base):
@@ -119,6 +125,8 @@ class WorkSession(Base):
     task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id"), unique=True)
     current_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("task_runs.id"), unique=True)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    session_kind: Mapped[str] = mapped_column(String(30), default="agent", index=True)
+    system_managed: Mapped[bool] = mapped_column(Boolean, default=False)
     worktree_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     worktree_branch: Mapped[str | None] = mapped_column(String(200), nullable=True)
     worktree_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -143,6 +151,99 @@ class WorkSession(Base):
     __table_args__ = (
         UniqueConstraint("container_id", "idempotency_key", name="uq_work_session_container_key"),
     )
+
+
+class JudgePolicy(Base):
+    """System-owned policy for one container's required judge session."""
+
+    __tablename__ = "judge_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    container_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("work_containers.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    gates: Mapped[list] = mapped_column(JSONB, default=list)
+    model_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    safety_limits: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    container: Mapped[WorkContainer] = relationship(back_populates="judge_policy")
+
+
+class JudgeRound(Base):
+    """Durable evidence/gate/model/verdict checkpoint for one judge cycle."""
+
+    __tablename__ = "judge_rounds"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    container_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("work_containers.id", ondelete="CASCADE"), index=True
+    )
+    judge_session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("work_sessions.id", ondelete="CASCADE"), index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    request_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="collecting", index=True)
+    phase: Mapped[str] = mapped_column(String(30), default="evidence")
+    verdict: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_refs: Mapped[list] = mapped_column(JSONB, default=list)
+    evidence_payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    model_verdict: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    feedback_message_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    pending_session_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    container: Mapped[WorkContainer] = relationship(back_populates="judge_rounds")
+    gates: Mapped[list["JudgeGateResult"]] = relationship(
+        back_populates="round", cascade="all, delete-orphan", order_by="JudgeGateResult.created_at"
+    )
+    findings: Mapped[list["JudgeFinding"]] = relationship(
+        back_populates="round", cascade="all, delete-orphan", order_by="JudgeFinding.created_at"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("container_id", "sequence", name="uq_judge_round_container_sequence"),
+        UniqueConstraint("container_id", "request_key", name="uq_judge_round_container_request_key"),
+    )
+
+
+class JudgeGateResult(Base):
+    __tablename__ = "judge_gate_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    round_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("judge_rounds.id", ondelete="CASCADE"), index=True
+    )
+    gate_name: Mapped[str] = mapped_column(String(100))
+    passed: Mapped[bool] = mapped_column(Boolean)
+    evidence: Mapped[dict] = mapped_column(JSONB, default=dict)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    round: Mapped[JudgeRound] = relationship(back_populates="gates")
+
+
+class JudgeFinding(Base):
+    __tablename__ = "judge_findings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    round_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("judge_rounds.id", ondelete="CASCADE"), index=True
+    )
+    responsible_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("work_sessions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    severity: Mapped[str] = mapped_column(String(20), default="medium")
+    summary: Mapped[str] = mapped_column(Text)
+    evidence_refs: Mapped[list] = mapped_column(JSONB, default=list)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    round: Mapped[JudgeRound] = relationship(back_populates="findings")
 
 
 class SessionMessage(Base):

@@ -17,6 +17,7 @@ from app.api import (
     ai_gateway,
     approvals,
     execution_engines,
+    judge,
     observations,
     project_uploads,
     runs,
@@ -29,6 +30,8 @@ from app.api import (
     work_containers,
 )
 from app.core.security import require_token
+from app.core.db import SessionLocal
+from app.judge.service import backfill_judges
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,9 @@ async def lifespan(app: FastAPI):
         try:
             run_migrations()
             logger.info("database migrations up to date")
+            with SessionLocal() as session:
+                backfill_judges(session)
+                session.commit()
         except Exception:
             logger.exception("alembic upgrade head failed; refusing to start")
             raise
@@ -100,5 +106,6 @@ for router in (
     team_observatory.router,
     team_presets.router,
     work_containers.router,
+    judge.router,
 ):
     app.include_router(router, prefix="/api", dependencies=_secured)

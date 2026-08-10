@@ -186,6 +186,8 @@ def _session_dict(item: WorkSession, *, include_private: bool = False) -> dict:
         "id": str(item.id),
         "container_id": str(item.container_id),
         "role": item.role,
+        "session_kind": item.session_kind,
+        "system_managed": item.system_managed,
         "goal": item.goal,
         "status": _runtime_status(item),
         "task_id": str(item.task_id),
@@ -280,6 +282,11 @@ def _message_dict(message: SessionMessage) -> dict:
         "author_type": message.author_type,
         "kind": message.kind,
         "message_type": message.message_type,
+        "entry_type": (
+            message.message_type
+            if message.message_type != SessionMessageType.MESSAGE.value
+            else message.kind
+        ),
         "content": message.content,
         "delivery_state": message.delivery_state,
         "status": message.delivery_state,  # alias for frontend convenience
@@ -321,19 +328,52 @@ def create_work_container(
         default_workspace_policy=body.default_workspace_policy.value,
     )
     session.add(container)
+    session.flush()
+    from app.judge.service import ensure_judge_session
+
+    ensure_judge_session(session, container)
     session.commit()
     session.refresh(container)
-    return _container_dict(container)
+    from app.judge.service import judge_state
+
+    return {**_container_dict(container), "judge": judge_state(session, container)}
 
 
 @router.get("/work-containers/{container_id}")
 def get_work_container(container_id: uuid.UUID, session: Session = Depends(get_db)) -> dict:
     container = _container_or_404(session, container_id)
+    from app.judge.service import ensure_judge_session
+
+    ensure_judge_session(session, container)
+    session.commit()
     result = _container_dict(container)
     # Enrich with team observatory fields (team_status, usage_summary, progress_summary)
     from app.api.team_observatory import _enrich_container_dict
     result.update(_enrich_container_dict(container, session))
     return result
+
+
+@router.get("/work-containers/{container_id}/messages")
+def list_container_messages(
+    container_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+    session: Session = Depends(get_db),
+) -> dict:
+    _container_or_404(session, container_id)
+    items = list(
+        session.execute(
+            select(SessionMessage)
+            .options(
+                selectinload(SessionMessage.sender_session),
+                selectinload(SessionMessage.recipient_session),
+            )
+            .where(SessionMessage.container_id == container_id)
+            .order_by(SessionMessage.created_at.desc())
+            .limit(limit)
+        ).scalars()
+    )
+    items.reverse()
+    return {"messages": [_message_dict(item) for item in items]}
 
 
 @router.patch("/work-containers/{container_id}")
@@ -430,6 +470,14 @@ def _create_work_session_records(
         budget_fields=body.budget.model_dump(),
         model_config={
             "execution_engine": body.execution_engine,
+            **(
+                {
+                    "folder_access": "full_access",
+                    "project_dir": container.base_workdir,
+                }
+                if container.default_workspace_policy == WorkspacePolicy.WORKTREE.value
+                else {}
+            ),
             **(model_config_overrides or {}),
         },
     )
@@ -581,6 +629,11 @@ def pause_work_session(
     container_id: uuid.UUID, session_id: uuid.UUID, session: Session = Depends(get_db)
 ) -> dict:
     item = _session_or_404(session, container_id, session_id)
+    if item.system_managed:
+        raise HTTPException(
+            status_code=409,
+            detail="system-managed judge sessions can only be resumed through the judge API",
+        )
     result = _transition(session, item.current_run, RunStatus.PAUSED)
     item.status = result["status"]
     item.updated_at = utcnow()

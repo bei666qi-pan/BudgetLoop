@@ -19,7 +19,7 @@ from app.api.common import (
 )
 from app.core.db import get_db
 from app.core.enums import TERMINAL_STATUSES, RunStatus, Strategy, TaskTemplate
-from app.core.models import Base, Task, TaskRun
+from app.core.models import Base, Task, TaskRun, WorkSession, utcnow
 from app.policy.workspace_access import (
     FolderAccess,
     normalize_project_dir,
@@ -161,8 +161,28 @@ def create_task_run(task_id: uuid.UUID, body: CreateRunRequest, session: Session
         attempt_no=attempt_no,
         strategy=strategy,
         budget_fields=budget_fields,
-        model_config=body.model_cfg,
+        model_config=(body.model_cfg if body.model_cfg is not None else dict(prev.model_config or {}) if prev else None),
     )
+    owner = session.execute(
+        select(WorkSession).where(WorkSession.task_id == task.id)
+    ).scalar_one_or_none()
+    if owner is not None:
+        prior_budgets = [item.budget for item in task.runs if item.id != run.id and item.budget]
+        # Each rerun carries the cumulative envelope forward, so the latest
+        # settled high-water mark is copied rather than summing snapshots
+        # (which would double-count usage on the third and later attempts).
+        run.budget.used_tokens = max((int(item.used_tokens or 0) for item in prior_budgets), default=0)
+        run.budget.used_calls = max((int(item.used_calls or 0) for item in prior_budgets), default=0)
+        run.budget.used_cost = max((float(item.used_cost or 0) for item in prior_budgets), default=0.0)
+        run.active_runtime_ms = max(
+            (int(item.active_runtime_ms or 0) for item in task.runs if item.id != run.id),
+            default=0,
+        )
+        owner.current_run_id = run.id
+        owner.status = RunStatus.PENDING.value
+        owner.workspace_status = "PENDING"
+        owner.workspace_error = None
+        owner.updated_at = utcnow()
     session.commit()
 
     result = {"task_id": str(task.id), "run_id": str(run.id), "attempt_no": attempt_no}

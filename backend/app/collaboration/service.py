@@ -41,7 +41,12 @@ TERMINAL_SESSION_STATUSES = frozenset({"COMPLETED", "FAILED", "CANCELLED"})
 def queued_messages_for_run(
     session: Session, run_id: uuid.UUID, *, limit: int = MAX_INBOX_MESSAGES
 ) -> list[SessionMessage]:
-    """Return only queued messages for the work session that owns ``run_id``."""
+    """Return pending messages for the work session that owns ``run_id``.
+
+    Injected messages remain eligible for bounded re-injection after a failed
+    run, so switching or retrying an execution engine cannot silently lose a
+    judge request before a real acknowledgement is recorded.
+    """
     owner_id = session.execute(
         select(WorkSession.id).where(WorkSession.current_run_id == run_id)
     ).scalar_one_or_none()
@@ -53,7 +58,12 @@ def queued_messages_for_run(
             .options(selectinload(SessionMessage.sender_session))
             .where(
                 SessionMessage.recipient_session_id == owner_id,
-                SessionMessage.delivery_state == MessageDeliveryState.QUEUED.value,
+                SessionMessage.delivery_state.in_(
+                    [
+                        MessageDeliveryState.QUEUED.value,
+                        MessageDeliveryState.INJECTED.value,
+                    ]
+                ),
             )
             .order_by(SessionMessage.created_at, SessionMessage.id)
             .limit(max(1, min(limit, MAX_INBOX_MESSAGES)))
@@ -111,9 +121,10 @@ def mark_messages_injected(messages: Sequence[SessionMessage]) -> None:
             message.injection_count = 1
         elif message.delivery_state == MessageDeliveryState.INJECTED.value:
             # Already injected — this is a re-injection attempt.
-            message.injection_count += 1
             if message.injection_count >= MAX_INJECTION_ATTEMPTS:
                 message.delivery_state = MessageDeliveryState.FAILED.value
+            else:
+                message.injection_count += 1
 
 
 def mark_messages_acknowledged(
