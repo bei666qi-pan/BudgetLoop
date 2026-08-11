@@ -2,7 +2,9 @@
 ARG CODEX_CLI_VERSION=0.145.0
 ARG GEMINI_CLI_VERSION=0.52.0
 ARG NODE_VERSION=22.20.0
-ARG PYTHON_IMAGE=docker.1ms.run/library/python:3.12-slim
+# Docker Hub is reachable from both local development and GitHub Actions.
+# Callers that need a regional mirror can still override this build argument.
+ARG PYTHON_IMAGE=python:3.12-slim
 
 FROM ${PYTHON_IMAGE}
 ARG TARGETARCH
