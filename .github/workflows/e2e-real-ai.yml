@@ -58,8 +58,7 @@ jobs:
           LITELLM_DATABASE_URL=postgresql://budgetloop:budgetloop-ci-password@postgres:5432/litellm
           REDIS_URL=redis://valkey:6379/0
           API_TOKEN=${api_token}
-          CONTROL_PLANE_PORT=8000
-          CONTROL_PLANE_HOST_PORT=18080
+          CONTROL_PLANE_PORT=18080
           WEB_PORT=3000
           CONTROL_PLANE_API_BASE=http://control-plane:8000
           CONTROL_PLANE_API_TOKEN=${api_token}
