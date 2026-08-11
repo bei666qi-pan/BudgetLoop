@@ -25,8 +25,8 @@ const config: Config = {
         critical: "#EF4B5B",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
-        mono: ["var(--font-jetbrains-mono)", "SFMono-Regular", "Consolas", "monospace"],
+        sans: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
+        mono: ["SFMono-Regular", "Consolas", "Liberation Mono", "monospace"],
       },
       fontSize: {
         "2xs": ["0.75rem", { lineHeight: "1.1rem" }],

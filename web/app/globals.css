@@ -4,7 +4,7 @@
 
 @layer base {
   * { border-color: theme('colors.border'); scrollbar-width: thin; scrollbar-color: #bed2ee transparent; }
-  html { font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   body {
     @apply min-h-screen bg-background text-foreground text-sm;
     background-image:
