@@ -24,6 +24,9 @@ artifacts/
 !backend/app/artifacts/*.py
 workspace-data/
 .budgetloop/
+backend/workspaces/
+dump.rdb
+.env.bak
 *.log
 
 # Generated application bundles
